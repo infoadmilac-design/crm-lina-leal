@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Lina Leal - Dashboard Completo</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #1a202c;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            color: #718096;
+            font-size: 16px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            background: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .kpi-card .label {
+            color: #718096;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .kpi-card .value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #1a202c;
+        }
+
+        .kpi-card .change {
+            font-size: 14px;
+            margin-top: 10px;
+            color: #48bb78;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .chart-card h3 {
+            margin-bottom: 20px;
+            color: #1a202c;
+        }
+
+        .filters {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .filter-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .filter-input {
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .leads-table {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f7fafc;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-green {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .badge-yellow {
+            background: #fef5e7;
+            color: #744210;
+        }
+
+        .badge-blue {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .badge-purple {
+            background: #e9d8fd;
+            color: #44337a;
+        }
+
+        .badge-red {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .whatsapp-btn {
+            background: #25d366;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
+        }
+
+        .whatsapp-btn:hover {
+            background: #128c7e;
+        }
+
+        .strategy-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .strategy-card h3 {
+            color: #1a202c;
+            margin-bottom: 15px;
+        }
+
+        .strategy-card .segment {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .strategy-card .segment h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .strategy-card ul {
+            margin-left: 20px;
+            color: #4a5568;
+        }
+
+        .strategy-card li {
+            margin-bottom: 8px;
+        }
+
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .product-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-top: 4px solid #667eea;
+        }
+
+        .product-card h4 {
+            color: #1a202c;
+            margin-bottom: 10px;
+        }
+
+        .product-card .price {
+            font-size: 28px;
+            font-weight: 700;
+            color: #667eea;
+            margin: 15px 0;
+        }
+
+        .product-card .description {
+            color: #718096;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .product-card ul {
+            margin-left: 20px;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .action-plan {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .action-day {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #48bb78;
+        }
+
+        .action-day h4 {
+            color: #48bb78;
+            margin-bottom: 15px;
+        }
+
+        .action-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .action-item .time {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .action-item .task {
+            color: #1a202c;
+            margin-top: 5px;
+        }
+
+        .action-item .priority {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
+        .priority-alta {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .priority-media {
+            background: #fef5e7;
+            color: #744210;
+        }
+
+        .priority-baja {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .filter-group {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 CRM Lina Leal - Dashboard Profesional</h1>
+            <p class="subtitle">Migración a España | Actualización en tiempo real</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="changeTab('dashboard')">📊 Dashboard</button>
+            <button class="tab" onclick="changeTab('leads')">👥 Leads</button>
+            <button class="tab" onclick="changeTab('analytics')">📈 Analítica</button>
+            <button class="tab" onclick="changeTab('marketing')">🎯 Marketing</button>
+            <button class="tab" onclick="changeTab('productos')">💼 Productos</button>
+            <button class="tab" onclick="changeTab('accion')">📅 Plan de Acción</button>
+        </div>
+
+        <!-- DASHBOARD TAB -->
+        <div id="dashboard" class="tab-content active">
+            <div class="kpis">
+                <div class="kpi-card">
+                    <div class="label">Total Leads</div>
+                    <div class="value" id="totalLeads">155</div>
+                    <div class="change">+47 esta semana</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">En España (Turistas)</div>
+                    <div class="value" id="enEspana">48</div>
+                    <div class="change">31% del total</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Tasa de Conversión</div>
+                    <div class="value">23%</div>
+                    <div class="change">+5% vs mes anterior</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Promedio Días Contacto</div>
+                    <div class="value">2.4</div>
+                    <div class="change">Muy bueno</div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>Leads por Nacionalidad</h3>
+                    <canvas id="chartNacionalidad"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Etapa del Funnel</h3>
+                    <canvas id="chartEtapa"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Objetivos Principales</h3>
+                    <canvas id="chartObjetivos"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Nivel Académico</h3>
+                    <canvas id="chartNivel"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- LEADS TAB -->
+        <div id="leads" class="tab-content">
+            <div class="filters">
+                <h3 style="margin-bottom: 20px;">Filtros Avanzados</h3>
+                <div class="filter-group">
+                    <input type="text" class="filter-input" id="filterNombre" placeholder="Buscar por nombre...">
+                    <select class="filter-input" id="filterNacionalidad">
+                        <option value="">Todas las nacionalidades</option>
+                    </select>
+                    <select class="filter-input" id="filterPais">
+                        <option value="">Todos los países</option>
+                    </select>
+                    <select class="filter-input" id="filterEtapa">
+                        <option value="">Todas las etapas</option>
+                    </select>
+                    <select class="filter-input" id="filterObjetivo">
+                        <option value="">Todos los objetivos</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="applyFilters()" style="background: #667eea; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer;">Aplicar Filtros</button>
+                    <button onclick="resetFilters()" style="background: #e2e8f0; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer;">Limpiar</button>
+                </div>
+            </div>
+
+            <div class="leads-table">
+                <table id="leadsTable">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Nacionalidad</th>
+                            <th>País Actual</th>
+                            <th>Nivel</th>
+                            <th>Etapa</th>
+                            <th>Objetivo</th>
+                            <th>WhatsApp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ANALYTICS TAB -->
+        <div id="analytics" class="tab-content">
+            <div class="strategy-card">
+                <h3>📊 Análisis Profundo de Segmentación</h3>
+                
+                <div class="segment">
+                    <h4>🟢 Segmento Alto Potencial (48 leads - 31%)</h4>
+                    <p><strong>Perfil:</strong> Turistas en España (<30 días), alta urgencia</p>
+                    <ul>
+                        <li><strong>Característica:</strong> Ventana de 30 días para regularizar</li>
+                        <li><strong>Propuesta de valor:</strong> Visado de estudios + trabajo (30h)</li>
+                        <li><strong>Tasa de conversión esperada:</strong> 45-55%</li>
+                        <li><strong>Ticket promedio:</strong> €484 (servicio completo)</li>
+                    </ul>
+                </div>
+
+                <div class="segment">
+                    <h4>🟡 Segmento Medio-Alto (35 leads - 23%)</h4>
+                    <p><strong>Perfil:</strong> Organizando documentos / Próximos a viajar</p>
+                    <ul>
+                        <li><strong>Característica:</strong> Intención clara, preparando viaje</li>
+                        <li><strong>Propuesta de valor:</strong> Asesoría completa pre-viaje</li>
+                        <li><strong>Tasa de conversión esperada:</strong> 30-40%</li>
+                        <li><strong>Ticket promedio:</strong> €400-600</li>
+                    </ul>
+                </div>
+
+                <div class="segment">
+                    <h4>🔵 Segmento Exploradores (52 leads - 34%)</h4>
+                    <p><strong>Perfil:</strong> Solo explorando opciones</p>
+                    <ul>
+                        <li><strong>Característica:</strong> Fase temprana, investigando</li>
+                        <li><strong>Propuesta de valor:</strong> Contenido educativo, webinars</li>
+                        <li><strong>Tasa de conversión esperada:</strong> 10-15%</li>
+                        <li><strong>Ciclo de ventas:</strong> 2-4 meses</li>
+                    </ul>
+                </div>
+
+                <div class="segment">
+                    <h4>🟣 Segmento Con Residencia (12 leads - 8%)</h4>
+                    <p><strong>Perfil:</strong> Ya tienen estancia/residencia en España</p>
+                    <ul>
+                        <li><strong>Característica:</strong> Buscan modificación o nacionalidad</li>
+                        <li><strong>Propuesta de valor:</strong> Arraigo, renovaciones, nacionalidad</li>
+                        <li><strong>Ticket promedio:</strong> €799+ (servicios avanzados)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>Distribución Geográfica</h3>
+                    <canvas id="chartGeografico"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Urgencia vs Volumen</h3>
+                    <canvas id="chartUrgencia"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- MARKETING TAB -->
+        <div id="marketing" class="tab-content">
+            <div class="strategy-card">
+                <h3>🎯 Estrategias de Marketing por Segmento</h3>
+                
+                <div class="segment">
+                    <h4>🔥 URGENTE: Turistas en España (48 leads)</h4>
+                    <p><strong>Acción Inmediata - Próximas 48 horas:</strong></p>
+                    <ul>
+                        <li>📱 <strong>WhatsApp Broadcast:</strong> "¡Solo tienes 30 días! Agenda tu consulta GRATIS hoy"</li>
+                        <li>📧 <strong>Email Secuencia:</strong> "Checklist urgente: 7 pasos antes de que venzan tus 90 días"</li>
+                        <li>🎥 <strong>Video Personalizado:</strong> "Qué hacer en tus primeros 30 días en España"</li>
+                        <li>💬 <strong>Mensajes directos:</strong> Segmentados por ciudad (Madrid, Barcelona, Tenerife)</li>
+                        <li>🎁 <strong>Oferta flash 72h:</strong> "Consulta + Checklist GRATIS si agendas hoy"</li>
+                    </ul>
+                </div>
+
+                <div class="segment">
+                    <h4>⏰ Próximos a viajar (20 leads)</h4>
+                    <p><strong>Campaña: "Todo listo antes de despegar"</strong></p>
+                    <ul>
+                        <li>📋 <strong>Lead Magnet:</strong> "Guía completa: Documentos para migrar sin errores"</li>
+                        <li>📞 <strong>Llamada Zoom 15min:</strong> Diagnóstico rápido gratuito</li>
+                        <li>💰 <strong>Paquete Pre-viaje:</strong> €399 (revisión docs + estrategia)</li>
+                        <li>⏳ <strong>Countdown Timer:</strong> "X días para tu viaje, ¿ya tienes todo?"</li>
+                    </ul>
+                </div>
+
+                <div class="segment">
+                    <h4>📚 Exploradores (52 leads)</h4>
+                    <p><strong>Campaña: Educación y Nurturing</strong></p>
+                    <ul>
+                        <li>🎓 <strong>Webinar Semanal:</strong> "Cómo migrar a España legalmente en 2026"</li>
+                        <li>📖 <strong>Serie de Emails (7 días):</strong> 1 tema diario sobre migración</li>
+                        <li>📱 <strong>Instagram Stories:</strong> Casos de éxito, testimonios</li>
+                        <li>🎬 <strong>Reels/TikToks:</strong> Mitos vs Realidades de migrar</li>
+                        <li>💬 <strong>Grupo WhatsApp:</strong> Comunidad "Futuros Residentes España 2026"</li>
+                    </ul>
+                </div>
+
+                <div class="segment">
+                    <h4>🌍 Estrategia por Nacionalidad</h4>
+                    <ul>
+                        <li><strong>Colombianos (40%):</strong> Testimoniales de colombianos exitosos + WhatsApp directo</li>
+                        <li><strong>Peruanos (18%):</strong> Focus en visado de estudios + trabajo</li>
+                        <li><strong>Ecuatorianos (15%):</strong> Casos médicos homologados</li>
+                        <li><strong>Venezolanos (12%):</strong> Arraigo familiar + regularización</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- PRODUCTOS TAB -->
+        <div id="productos" class="tab-content">
+            <h2 style="margin-bottom: 30px; color: white; text-align: center;">💼 Productos Recomendados por Segmento</h2>
+            
+            <h3 style="color: white; margin: 30px 0 20px;">🔥 Para Turistas en España (Alto Potencial)</h3>
+            <div class="product-grid">
+                <div class="product-card">
+                    <h4>⚡ Paquete Express</h4>
+                    <div class="price">€599</div>
+                    <div class="description">Ideal para quien tiene menos de 15 días</div>
+                    <ul>
+                        <li>✅ Revisión urgente de documentos</li>
+                        <li>✅ Trámite estancia por estudios</li>
+                        <li>✅ Gestión en 7-10 días</li>
+                        <li>✅ Soporte WhatsApp 24/7</li>
+                    </ul>
+                </div>
+                <div class="product-card">
+                    <h4>📋 Servicio Completo</h4>
+                    <div class="price">€484</div>
+                    <div class="description">El más popular - Todo incluido</div>
+                    <ul>
+                        <li>✅ Asesoría personalizada</li>
+                        <li>✅ Preparación documentos</li>
+                        <li>✅ Trámite completo TIE</li>
+                        <li>✅ Seguimiento hasta aprobación</li>
+                        <li>✅ Pago en 2 cuotas</li>
+                    </ul>
+                </div>
+                <div class="product-card">
+                    <h4>💬 Consulta Urgente</h4>
+                    <div class="price">€60.50</div>
+                    <div class="description">30 minutos con Lina Leal</div>
+                    <ul>
+                        <li>✅ Videollamada inmediata</li>
+                        <li>✅ Diagnóstico de tu caso</li>
+                        <li>✅ Estrategia personalizada</li>
+                        <li>✅ Plan de acción claro</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3 style="color: white; margin: 30px 0 20px;">⏰ Para Organizando Documentos / Próximos a Viajar</h3>
+            <div class="product-grid">
+                <div class="product-card">
+                    <h4>🎯 Paquete Pre-viaje</h4>
+                    <div class="price">€399</div>
+                    <div class="description">Todo listo antes de despegar</div>
+                    <ul>
+                        <li>✅ Revisión completa documentos</li>
+                        <li>✅ Checklist personalizado</li>
+                        <li>✅ Apostillas y traducciones</li>
+                        <li>✅ Estrategia migratoria</li>
+                    </ul>
+                </div>
+                <div class="product-card">
+                    <h4>📄 Revisión Documentos</h4>
+                    <div class="price">€199</div>
+                    <div class="description">Asegura que todo esté correcto</div>
+                    <ul>
+                        <li>✅ Análisis de documentación</li>
+                        <li>✅ Corrección de errores</li>
+                        <li>✅ Informe detallado</li>
+                        <li>✅ Recomendaciones</li>
+                    </ul>
+                </div>
+                <div class="product-card">
+                    <h4>📚 Guía Completa Digital</h4>
+                    <div class="price">€49</div>
+                    <div class="description">Hazlo tú mismo con ayuda</div>
+                    <ul>
+                        <li>✅ Ebook "Primeros 30 Días"</li>
+                        <li>✅ Templates de documentos</li>
+                        <li>✅ Videos explicativos</li>
+                        <li>✅ Checklist descargable</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3 style="color: white; margin: 30px 0 20px;">🟣 Para Residentes / Modificaciones</h3>
+            <div class="product-grid">
+                <div class="product-card">
+                    <h4>🏛️ Paquete Arraigo</h4>
+                    <div class="price">€799</div>
+                    <div class="description">Social, laboral o formativo</div>
+                    <ul>
+                        <li>✅ Análisis de viabilidad</li>
+                        <li>✅ Preparación expediente</li>
+                        <li>✅ Trámite completo</li>
+                        <li>✅ Hasta la resolución</li>
+                    </ul>
+                </div>
+                <div class="product-card">
+                    <h4>🎓 Homologación Título</h4>
+                    <div class="price">€499</div>
+                    <div class="description">Valida tu profesión en España</div>
+                    <ul>
+                        <li>✅ Gestión ante Ministerio</li>
+                        <li>✅ Traducciones juradas</li>
+                        <li>✅ Apostillas necesarias</li>
+                        <li>✅ Seguimiento completo</li>
+                    </ul>
+                </div>
+                <div class="product-card">
+                    <h4>🇪🇸 Nacionalidad Española</h4>
+                    <div class="price">€1,200</div>
+                    <div class="description">El paso final</div>
+                    <ul>
+                        <li>✅ Expediente completo</li>
+                        <li>✅ Exámenes CCSE y DELE</li>
+                        <li>✅ Todos los trámites</li>
+                        <li>✅ Hasta obtener la nacionalidad</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- PLAN DE ACCIÓN TAB -->
+        <div id="accion" class="tab-content">
+            <div class="action-plan">
+                <h2 style="margin-bottom: 30px; color: #1a202c;">📅 Plan de Acción Proactivo - Próximos 7 Días</h2>
+                
+                <div class="action-day">
+                    <h4>🟢 MAÑANA - Jueves 1 de Mayo</h4>
+                    <div class="action-item">
+                        <div class="time">08:00 - 10:00</div>
+                        <div class="task"><strong>WhatsApp Broadcast URGENTE:</strong> Mensaje a 48 turistas en España ofreciendo consulta gratis hoy</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">10:00 - 12:00</div>
+                        <div class="task"><strong>Llamadas Personalizadas:</strong> Contactar a 10 leads "Ya en España" con mayor potencial</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">14:00 - 16:00</div>
+                        <div class="task"><strong>Email Secuencia:</strong> Enviar "Checklist 30 días en España" a todos los turistas</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">16:00 - 18:00</div>
+                        <div class="task"><strong>Contenido Redes:</strong> Publicar Reel "5 errores fatales en tus primeros 30 días"</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                </div>
+
+                <div class="action-day">
+                    <h4>🔵 VIERNES 2 de Mayo</h4>
+                    <div class="action-item">
+                        <div class="time">09:00 - 11:00</div>
+                        <div class="task"><strong>Follow-up:</strong> Responder a todos los WhatsApp de ayer + agendar consultas</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">11:00 - 13:00</div>
+                        <div class="task"><strong>Webinar LIVE:</strong> "Cómo regularizarte en España en 30 días" (Instagram + Zoom)</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">15:00 - 17:00</div>
+                        <div class="task"><strong>Email Exploradores:</strong> Enviar guía "Los 3 caminos para migrar legalmente a España"</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">17:00 - 19:00</div>
+                        <div class="task"><strong>Cierre Semanal:</strong> Revisar conversiones de la semana y ajustar estrategia</div>
+                        <span class="priority priority-baja">PRIORIDAD BAJA</span>
+                    </div>
+                </div>
+
+                <div class="action-day">
+                    <h4>🟡 SÁBADO 3 de Mayo</h4>
+                    <div class="action-item">
+                        <div class="time">10:00 - 12:00</div>
+                        <div class="task"><strong>Contenido:</strong> Crear 5 Reels/TikToks educativos para la semana</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">16:00 - 18:00</div>
+                        <div class="task"><strong>Casos de Éxito:</strong> Grabar testimonial de cliente reciente (video/escrito)</div>
+                        <span class="priority priority-baja">PRIORIDAD BAJA</span>
+                    </div>
+                </div>
+
+                <div class="action-day">
+                    <h4>🟣 LUNES 5 de Mayo</h4>
+                    <div class="action-item">
+                        <div class="time">08:00 - 10:00</div>
+                        <div class="task"><strong>Segmento "Organizando Docs":</strong> Email con oferta Pre-viaje €399</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">10:00 - 13:00</div>
+                        <div class="task"><strong>Llamadas Calificación:</strong> Contactar 15 leads "Organizando documentos"</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">15:00 - 17:00</div>
+                        <div class="task"><strong>Ads Facebook/Instagram:</strong> Lanzar campaña "Estudia y trabaja en España" (Colombia, Perú, Ecuador)</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                </div>
+
+                <div class="action-day">
+                    <h4>🟢 MARTES 6 de Mayo</h4>
+                    <div class="action-item">
+                        <div class="time">09:00 - 11:00</div>
+                        <div class="task"><strong>Email Nacionalidad:</strong> Campaña "¿Cuánto falta para tu pasaporte español?" - Segmento Iberoamérica</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">11:00 - 14:00</div>
+                        <div class="task"><strong>Sesiones Consultoría:</strong> Atender consultas agendadas de la semana</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">16:00 - 18:00</div>
+                        <div class="task"><strong>Análisis CRM:</strong> Revisar este dashboard, identificar leads fríos para reactivar</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                </div>
+
+                <div class="action-day">
+                    <h4>🔵 MIÉRCOLES 7 de Mayo</h4>
+                    <div class="action-item">
+                        <div class="time">09:00 - 12:00</div>
+                        <div class="task"><strong>WhatsApp Campaña:</strong> "Próximos a viajar" - Oferta paquete Pre-viaje con descuento 20%</div>
+                        <span class="priority priority-alta">PRIORIDAD ALTA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">14:00 - 16:00</div>
+                        <div class="task"><strong>Webinar Grabado:</strong> Crear masterclass "Documentos perfectos para tu visado" (reusable)</div>
+                        <span class="priority priority-media">PRIORIDAD MEDIA</span>
+                    </div>
+                    <div class="action-item">
+                        <div class="time">17:00 - 19:00</div>
+                        <div class="task"><strong>Planificación Semanal:</strong> Preparar plan de acción siguiente semana</div>
+                        <span class="priority priority-baja">PRIORIDAD BAJA</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="strategy-card">
+                <h3>🎯 Objetivos Semanales (Semana del 1-7 Mayo)</h3>
+                <div class="segment">
+                    <h4>Metas Comerciales</h4>
+                    <ul>
+                        <li>✅ <strong>Convertir 8-12 turistas en España</strong> → Servicio completo €484 (Target: €4,000)</li>
+                        <li>✅ <strong>Cerrar 5 paquetes Pre-viaje</strong> → €399 c/u (Target: €2,000)</li>
+                        <li>✅ <strong>Realizar 15 consultas pagas</strong> → €60.50 c/u (Target: €900)</li>
+                        <li>🎯 <strong>Total semanal objetivo: €6,900</strong></li>
+                    </ul>
+                </div>
+                <div class="segment">
+                    <h4>Metas de Marketing</h4>
+                    <ul>
+                        <li>📱 Contactar 100% de turistas en España (48 leads)</li>
+                        <li>📧 Nutrir 52 exploradores con secuencia email</li>
+                        <li>🎥 Publicar 7 contenidos educativos (1 por día)</li>
+                        <li>📊 Aumentar engagement en redes +25%</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DATOS COMPLETOS - 155 LEADS REALES
+        const leadsData = [
+            {nombre: "Cristian leal", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573016264814"},
+            {nombre: "Ángel Zapata", nacionalidad: "Ecuatoriano", pais: "Ecuador", nivel: "Postgrado", etapa: "Título homologado buscando empleo", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5939678454680"},
+            {nombre: "Daniel Zapata", nacionalidad: "Venezolano", pais: "Venezuela", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+56983247013"},
+            {nombre: "Geiser Brayan Pezo macahuachi", nacionalidad: "Peruano", pais: "España", nivel: "Curso FP", etapa: "Ya en España (con estancia/residencia)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34651395253"},
+            {nombre: "Juan Esteban Valencia", nacionalidad: "Colombiano", pais: "Alemania", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+491784021791"},
+            {nombre: "Andrea", nacionalidad: "Ecuatoriana", pais: "España", nivel: "Bachiller", etapa: "Dos meses", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+347420718220"},
+            {nombre: "Viviana Botero Moreno", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Profesional", etapa: "Buscando asesoría para el visado estudiantil", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573114194064"},
+            {nombre: "Jhoselyn", nacionalidad: "Peruana", pais: "España", nivel: "Estudiante", etapa: "Ya en españa 2 meses y 10 dias", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34607280774"},
+            {nombre: "Julián Sánchez", nacionalidad: "Colombiana", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34637283005"},
+            {nombre: "Oscar Osorio", nacionalidad: "Colombiano", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+6533362850"},
+            {nombre: "Daniela shirley Melo Morillo", nacionalidad: "Colombiana", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34604250374"},
+            {nombre: "Yoly", nacionalidad: "Colombia", pais: "España", nivel: "Profesional", etapa: "Turista 1 mes", objetivo: "Tramitar la nacionalidad española.", whatsapp: "+34614754377"},
+            {nombre: "Manuela", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+31121994400"},
+            {nombre: "Oscar Osorio pinzón", nacionalidad: "Colombiano", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+6533362850"},
+            {nombre: "Luisiana Escalona", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584121643940"},
+            {nombre: "Willian Efrén castro Hugo", nacionalidad: "Ecuatoriano", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+0034643427260"},
+            {nombre: "Hillary", nacionalidad: "Chilena", pais: "Chile", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+56954707151"},
+            {nombre: "Manuel Amadeo", nacionalidad: "Peruana", pais: "España", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51910325948"},
+            {nombre: "Jackeline", nacionalidad: "Peruana", pais: "España", nivel: "Profesional", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51944442779"},
+            {nombre: "Johana", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+57"},
+            {nombre: "Santos Yulissa Santisteban Navarro", nacionalidad: "Peruana", pais: "España", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34671636143"},
+            {nombre: "Deivis Andrés De la hoz Garcerant", nacionalidad: "Colombiano", pais: "España", nivel: "Profesional", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Homologar mi título profesional.", whatsapp: "+573016654833"},
+            {nombre: "Gabriela Godoy", nacionalidad: "Argentina", pais: "Argentina", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+541133043253"},
+            {nombre: "Humberto francisco de leon bautista", nacionalidad: "República Dominicana", pais: "España", nivel: "Técnico", etapa: "Visa schenger de 45 días llevo 3 día", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+8493603918"},
+            {nombre: "María González", nacionalidad: "Venezolana", pais: "Colombia", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573025221349"},
+            {nombre: "Byron Oswaldo López Núñez", nacionalidad: "Ecuatoriano", pais: "Ecuador", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+0969866997"},
+            {nombre: "Danielys Luque", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+584242133441"},
+            {nombre: "Kessiah Avalos", nacionalidad: "Peruana", pais: "España", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34625755835"},
+            {nombre: "Dayanne Gallardo", nacionalidad: "Ecuatoriana", pais: "Ecuador", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+593962690016"},
+            {nombre: "Judith Aguado Enciso", nacionalidad: "Peruana", pais: "Peru", nivel: "Profesional", etapa: "Llego en junio", objetivo: "Homologar mi título profesional.", whatsapp: "+051910443721"},
+            {nombre: "Carolay", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Tecnico", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584127843538"},
+            {nombre: "George andres Rodríguez", nacionalidad: "Colombiano", pais: "España", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34641697652"},
+            {nombre: "Julieth", nacionalidad: "Colombiana", pais: "España", nivel: "Postgrado", etapa: "España turista mas del mes, menos de 90 dias", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34624225590"},
+            {nombre: "Romina Chavarria", nacionalidad: "Argentina", pais: "Bolivia", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+59179755009"},
+            {nombre: "Mauricio Cárdenas", nacionalidad: "Colombiana", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34607503838"},
+            {nombre: "Jackeline Bravo", nacionalidad: "Venezolana", pais: "Chile", nivel: "Profesional", etapa: "Viajando finales de junio", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+56927227421"},
+            {nombre: "Giovanna Quinga", nacionalidad: "Ecuatoriana", pais: "Ecuador", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+593939212432"},
+            {nombre: "Luis Zhinin", nacionalidad: "Ecuador", pais: "Ecuador", nivel: "Postgrado", etapa: "Organizando documentos", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+593983776100"},
+            {nombre: "Mirian", nacionalidad: "Bolivia", pais: "Bolivia", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+59178496832"},
+            {nombre: "Nancy", nacionalidad: "Ecuador", pais: "Ecuador", nivel: "Bachiller", etapa: "Pronto a viajar", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+593990705228"},
+            {nombre: "Eylin García", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Tecnico", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584149716860"},
+            {nombre: "Jenniefer Rios Alejos", nacionalidad: "Perú", pais: "Perú", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51957378086"},
+            {nombre: "Manuela Acevedo Perez", nacionalidad: "Colombiana", pais: "España", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34614577240"},
+            {nombre: "Oscar santiago matorel villadiego", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Tecnologo", etapa: "Organizando documentos", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+31479881270"},
+            {nombre: "Daniela Gonzalez", nacionalidad: "Colombiana", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34641334907"},
+            {nombre: "Renzo", nacionalidad: "Peruana", pais: "Peru", nivel: "Profesional", etapa: "Con planes de viajar en septiembre/octubre", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51959226655"},
+            {nombre: "Angela", nacionalidad: "Peruana", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34697328637"},
+            {nombre: "Nicolás Buriticá Orozco", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573052387717"},
+            {nombre: "Jhonn", nacionalidad: "Ecuatoriano", pais: "Ecuador", nivel: "Tecnico", etapa: "Viajo entre junio y julio", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+5939690946650"},
+            {nombre: "Franyeli", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584143920351"},
+            {nombre: "Daniel Fajardo", nacionalidad: "Ecuatoriano", pais: "Ecuador", nivel: "Médico", etapa: "Estoy en busca de visa PAC", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+593999751412"},
+            {nombre: "Adan Miguel eche Medina", nacionalidad: "Peruana", pais: "España", nivel: "Secundaria completa", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+6258781440"},
+            {nombre: "Javier Morales", nacionalidad: "Mexicano", pais: "Mexico", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+524423420919"},
+            {nombre: "Sahiry", nacionalidad: "Venezolana", pais: "España", nivel: "Profesional", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34605608047"},
+            {nombre: "Frank", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Homologar mi título profesional.", whatsapp: "+584127285430"},
+            {nombre: "Aminata DIALLO", nacionalidad: "Senegalesa", pais: "Senegal", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+221772218728"},
+            {nombre: "Xiomara", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+573137103448"},
+            {nombre: "Bruno Riviere", nacionalidad: "Argentina", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34600283035"},
+            {nombre: "Alfonzina Romero", nacionalidad: "Ecuatoriana", pais: "Ecuador", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5939819985540"},
+            {nombre: "Linda leal", nacionalidad: "Colombia", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34602047833"},
+            {nombre: "Josely Yendira Cuzca Castillo", nacionalidad: "Peruana", pais: "Perú", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51926891115"},
+            {nombre: "Alexis Gonzalez", nacionalidad: "Paraguay", pais: "España", nivel: "Bachiller", etapa: "Ya en España con casi 2 meses y 15 días", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+6847808820"},
+            {nombre: "Greicy Valery Valerio Vargas", nacionalidad: "Mexicana", pais: "Mexico", nivel: "Bachiller", etapa: "En desconocimiento que se necesita", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+81147551770"},
+            {nombre: "Oscar Tejada", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573207251250"},
+            {nombre: "Rafael moreno", nacionalidad: "Venezolano", pais: "Venezuela", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+584128380739"},
+            {nombre: "Davis", nacionalidad: "Peruano", pais: "Perú", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51980492060"},
+            {nombre: "Micaela Zambrana Salvatierra", nacionalidad: "BOLIVIANA", pais: "Bolivia", nivel: "Profesional", etapa: "Quiero ir a estudiar a España", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+59169530860"},
+            {nombre: "Alexandra Jiménez", nacionalidad: "Colombiana", pais: "España", nivel: "Profesional", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573154895245"},
+            {nombre: "Mario", nacionalidad: "Peru", pais: "España", nivel: "No estudie", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51923670418"},
+            {nombre: "Gilmar De Luna Freire", nacionalidad: "Brasil", pais: "Brasil", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+55159813685020"},
+            {nombre: "María Fernanda", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573142343253"},
+            {nombre: "Michael Morales", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Conductor", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+32258976770"},
+            {nombre: "Carolina", nacionalidad: "Chilena", pais: "Chile", nivel: "Profesional", etapa: "Con pasaje a España para el 14 de junio", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+569958701790"},
+            {nombre: "HELEN MERCADO ARIAS", nacionalidad: "BOLIVIANA", pais: "BOLIVIA", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5917842262"},
+            {nombre: "Javier", nacionalidad: "Peruano", pais: "Portugal", nivel: "Universitaria inconclusa", etapa: "Migrar legalmente y cuánto antes a España", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+351935641168"},
+            {nombre: "Ludmila Olivera", nacionalidad: "Uruguaya", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34634169204"},
+            {nombre: "Anarella Aguilera", nacionalidad: "Venezuela", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34691189281"},
+            {nombre: "Eduardo", nacionalidad: "Venezolana", pais: "Chile", nivel: "Ingeniero", etapa: "Solo explorando opciones", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+56930661360"},
+            {nombre: "Valentina", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5804245265227"},
+            {nombre: "Liz Trujillo", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+35074699740"},
+            {nombre: "Jhonier Tenorio", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Bachiller", etapa: "Próximo a viajar", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573227861539"},
+            {nombre: "Victoria Mora", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584145343895"},
+            {nombre: "Elizabeth Cuéllar", nacionalidad: "Peruana", pais: "España", nivel: "Auxiliar de educación", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34695710334"},
+            {nombre: "Daniela", nacionalidad: "Venezolana", pais: "Chile", nivel: "Tecnico", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+56957251837"},
+            {nombre: "Jorge Sisalima", nacionalidad: "Ecuatoriano", pais: "Ecuador", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5939606368490"},
+            {nombre: "Rebecka", nacionalidad: "Guatemalteca", pais: "Guatemala", nivel: "Licenciada", etapa: "Solo explorando opciones", objetivo: "Tramitar la nacionalidad española.", whatsapp: "+50230170980"},
+            {nombre: "REYLER EMIRO DEAL OTERO", nacionalidad: "COLOMBIANO", pais: "COLOMBIA", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573145573865"},
+            {nombre: "Ian cedeño", nacionalidad: "Panameño", pais: "Panama", nivel: "Bachiller", etapa: "Llego a españa en junio", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+50765044710"},
+            {nombre: "Luisa Vegas", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Tecnico", etapa: "Organizando documentos", objetivo: "Homologar mi título profesional.", whatsapp: "+584241700326"},
+            {nombre: "Yomira Cavero", nacionalidad: "Peruana", pais: "Peru", nivel: "Egresada en contabilidad", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51924573061"},
+            {nombre: "María Eugenia Lira Chacin", nacionalidad: "Vanezolana", pais: "Venezuela", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34673916533"},
+            {nombre: "Naisbelis otalora", nacionalidad: "Colombiana", pais: "España", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34614445669"},
+            {nombre: "Diego", nacionalidad: "Uruguayo", pais: "España", nivel: "Bachiller", etapa: "Ya en España (con estancia/residencia)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34680815559"},
+            {nombre: "Bryan", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Profesional", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Homologar mi título profesional.", whatsapp: "+573128713197"},
+            {nombre: "Breiner Samir Rocha luna", nacionalidad: "Colombia", pais: "España", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Tramitar la nacionalidad española.", whatsapp: "+34632517000"},
+            {nombre: "María Perez", nacionalidad: "Venezolana", pais: "España", nivel: "Profesional", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584244213135"},
+            {nombre: "Oscar Moreno Lizcano", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Tecnologo", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573042255562"},
+            {nombre: "Jaime Andrés Jiménez Benavides", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573233932085"},
+            {nombre: "Melissa Paredes", nacionalidad: "Boliviana", pais: "Bolivia", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+59168174139"},
+            {nombre: "Daniel Esteban Pérez López", nacionalidad: "Colombiano", pais: "España", nivel: "Tecnólogo", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573132157952"},
+            {nombre: "Laura leon", nacionalidad: "Colombia", pais: "España", nivel: "Profesional", etapa: "Ya en España (con estancia/residencia)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+34632256302"},
+            {nombre: "María Torres", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584121273105"},
+            {nombre: "Jesús mecheref", nacionalidad: "venezolana", pais: "España", nivel: "Profesional", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+584127622878"},
+            {nombre: "Nac", nacionalidad: "Ecuatoriana", pais: "España", nivel: "Licenciatura en turismo", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+5939796640720"},
+            {nombre: "Pedro", nacionalidad: "Colombia", pais: "España", nivel: "Tecnico", etapa: "Ya en España (con estancia/residencia)", objetivo: "Tramitar la nacionalidad española.", whatsapp: "+34611311841"},
+            {nombre: "Andrés Jiménez", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573233932085"},
+            {nombre: "Camilo Andrés Funieles Causi", nacionalidad: "Colombia", pais: "Colombia", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+543053377966"},
+            {nombre: "Cristina", nacionalidad: "México", pais: "México", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Tramitar la nacionalidad española.", whatsapp: "+525659095577"},
+            {nombre: "Melanie Henríquez Colan", nacionalidad: "Peruana", pais: "Peru", nivel: "Bachiller en Arquitectura", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51997167687"},
+            {nombre: "Melany Nieto", nacionalidad: "Ecuatoriana", pais: "ECUADOR", nivel: "Postgrado", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+593987053812"},
+            {nombre: "Karen", nacionalidad: "Hondureña", pais: "Honduras", nivel: "Licenciada en periodismo", etapa: "Organizando documentos", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+50494788099"},
+            {nombre: "Rider", nacionalidad: "Peruano", pais: "Perú", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Homologar mi título profesional.", whatsapp: "+51983847505"},
+            {nombre: "Danny", nacionalidad: "Colombia", pais: "España", nivel: "Postgrado", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573226079677"},
+            {nombre: "María Galviz", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Ingeniería industrial", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573005423173"},
+            {nombre: "Jonatan Lopez", nacionalidad: "Honduras", pais: "Colombia", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Homologar mi título profesional.", whatsapp: "+50433033534"},
+            {nombre: "Prinsk yhamile", nacionalidad: "Peru", pais: "España", nivel: "Secundaria completa", etapa: "Ya en España (con estancia/residencia)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34675338144"},
+            {nombre: "Rubén Cortez", nacionalidad: "Peruano", pais: "España", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34612566012"},
+            {nombre: "Addi Fernández", nacionalidad: "Mexicano", pais: "México", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+527771806489"},
+            {nombre: "Daniela Henao", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+573107326954"},
+            {nombre: "Juan Sebastián Sánchez Garcia", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573102756411"},
+            {nombre: "Monica Gomez", nacionalidad: "Paraguaya", pais: "Paraguay", nivel: "Postgrado", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+59971329602"},
+            {nombre: "Kelvin", nacionalidad: "Venezolana", pais: "España", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+56938614470"},
+            {nombre: "Leumin Garcia", nacionalidad: "Venezolano", pais: "México", nivel: "Bachiller", etapa: "Organizando todo porque me voy en unos días", objetivo: "Tramitar la nacionalidad española.", whatsapp: "+525548850026"},
+            {nombre: "Lisbeth tupiza", nacionalidad: "Ecuatoriana", pais: "Ecuador", nivel: "Bachiller", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5930979369547"},
+            {nombre: "Maite Montenegro", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Ingenieria en petróleo", etapa: "Estaré viajando está semana", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5804243470255"},
+            {nombre: "Yadira Suárez", nacionalidad: "Colombiana", pais: "Colombia", nivel: "Profesional", etapa: "Averiguando cómo viajar de manera legal", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+573204993039"},
+            {nombre: "Nathanael Rotela", nacionalidad: "Paraguayo", pais: "Paraguay", nivel: "Ingeniero agrónomo", etapa: "Esperando resolución", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+595986254386"},
+            {nombre: "Mariluz Collahua Briceño", nacionalidad: "Peruana", pais: "Perú", nivel: "Profesional", etapa: "Organizando documentos", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+51939128226"},
+            {nombre: "Jenny Espinoza", nacionalidad: "Peruana", pais: "Peru", nivel: "Bachiller", etapa: "Organizando documentos", objetivo: "Tramitar la nacionalidad española.", whatsapp: "+51969321075"},
+            {nombre: "Johanna Diaz", nacionalidad: "Dominicana", pais: "República Dominicana", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+8493400198"},
+            {nombre: "Silvia priscioa yepez ortiz", nacionalidad: "Ecuatoriana", pais: "Estambul", nivel: "Abogada", etapa: "Solo explorando opciones", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+593969120882"},
+            {nombre: "Evelyn sarmiento", nacionalidad: "Colombiana", pais: "España", nivel: "Tecnico", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+28043"},
+            {nombre: "Angel Blanco", nacionalidad: "Venezolana", pais: "Venezuela", nivel: "Profesional", etapa: "Solo explorando opciones", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+5842412563120"},
+            {nombre: "William Omar Calderón Hernandez", nacionalidad: "Salvadoreña", pais: "España", nivel: "Bachiller", etapa: "Ya en España (Turista- menos de un mes)", objetivo: "Estudiar y trabajar legalmente.", whatsapp: "+34671655537"},
+            {nombre: "Juan Moncada", nacionalidad: "Colombiano", pais: "Colombia", nivel: "Postgrado", etapa: "Organizando documentos", objetivo: "Obtener la residencia por trabajo o arraigo.", whatsapp: "+573217337371"}
+        ];
+
+        let filteredLeads = [...leadsData];
+
+        // Función para cambiar tabs
+        function changeTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Poblar filtros
+        function populateFilters() {
+            const nacionalidades = [...new Set(leadsData.map(l => l.nacionalidad))].sort();
+            const paises = [...new Set(leadsData.map(l => l.pais))].sort();
+            const etapas = [...new Set(leadsData.map(l => l.etapa))].sort();
+            const objetivos = [...new Set(leadsData.map(l => l.objetivo))].sort();
+
+            document.getElementById('filterNacionalidad').innerHTML = '<option value="">Todas las nacionalidades</option>' + nacionalidades.map(n => `<option value="${n}">${n}</option>`).join('');
+            document.getElementById('filterPais').innerHTML = '<option value="">Todos los países</option>' + paises.map(p => `<option value="${p}">${p}</option>`).join('');
+            document.getElementById('filterEtapa').innerHTML = '<option value="">Todas las etapas</option>' + etapas.map(e => `<option value="${e}">${e}</option>`).join('');
+            document.getElementById('filterObjetivo').innerHTML = '<option value="">Todos los objetivos</option>' + objetivos.map(o => `<option value="${o}">${o}</option>`).join('');
+        }
+
+        // Aplicar filtros
+        function applyFilters() {
+            const nombre = document.getElementById('filterNombre').value.toLowerCase();
+            const nacionalidad = document.getElementById('filterNacionalidad').value;
+            const pais = document.getElementById('filterPais').value;
+            const etapa = document.getElementById('filterEtapa').value;
+            const objetivo = document.getElementById('filterObjetivo').value;
+
+            filteredLeads = leadsData.filter(lead => {
+                return (nombre === '' || lead.nombre.toLowerCase().includes(nombre)) &&
+                       (nacionalidad === '' || lead.nacionalidad === nacionalidad) &&
+                       (pais === '' || lead.pais === pais) &&
+                       (etapa === '' || lead.etapa === etapa) &&
+                       (objetivo === '' || lead.objetivo === objetivo);
+            });
+
+            renderLeadsTable();
+        }
+
+        function resetFilters() {
+            document.getElementById('filterNombre').value = '';
+            document.getElementById('filterNacionalidad').value = '';
+            document.getElementById('filterPais').value = '';
+            document.getElementById('filterEtapa').value = '';
+            document.getElementById('filterObjetivo').value = '';
+            filteredLeads = [...leadsData];
+            renderLeadsTable();
+        }
+
+        // Renderizar tabla de leads
+        function renderLeadsTable() {
+            const tbody = document.getElementById('leadsTableBody');
+            tbody.innerHTML = filteredLeads.map(lead => {
+                const badge = getEtapaBadge(lead.etapa);
+                return `
+                    <tr>
+                        <td><strong>${lead.nombre}</strong></td>
+                        <td>${lead.nacionalidad}</td>
+                        <td>${lead.pais}</td>
+                        <td>${lead.nivel}</td>
+                        <td><span class="badge ${badge}">${lead.etapa}</span></td>
+                        <td>${lead.objetivo}</td>
+                        <td><a href="https://wa.me/${lead.whatsapp.replace(/[^0-9]/g, '')}" target="_blank" class="whatsapp-btn">WhatsApp</a></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function getEtapaBadge(etapa) {
+            if (etapa.includes('Ya en España (Turista')) return 'badge-red';
+            if (etapa.includes('Organizando') || etapa.includes('Pronto a viajar') || etapa.includes('Viajando') || etapa.includes('Llego')) return 'badge-yellow';
+            if (etapa.includes('Ya en España (con estancia')) return 'badge-purple';
+            return 'badge-blue';
+        }
+
+        // Crear gráficos
+        function createCharts() {
+            // Nacionalidad
+            const nacionalidadData = {};
+            leadsData.forEach(lead => {
+                nacionalidadData[lead.nacionalidad] = (nacionalidadData[lead.nacionalidad] || 0) + 1;
+            });
+            new Chart(document.getElementById('chartNacionalidad'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(nacionalidadData),
+                    datasets: [{
+                        data: Object.values(nacionalidadData),
+                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#fa709a', '#fee140', '#30cfd0', '#a8edea']
+                    }]
+                }
+            });
+
+            // Etapa
+            const etapaData = {
+                'Turistas en España': leadsData.filter(l => l.etapa.includes('Ya en España (Turista')).length,
+                'Organizando/Próximos': leadsData.filter(l => l.etapa.includes('Organizando') || l.etapa.includes('Pronto') || l.etapa.includes('Viajando')).length,
+                'Explorando': leadsData.filter(l => l.etapa.includes('Solo explorando')).length,
+                'Con Residencia': leadsData.filter(l => l.etapa.includes('con estancia/residencia')).length
+            };
+            new Chart(document.getElementById('chartEtapa'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(etapaData),
+                    datasets: [{
+                        label: 'Leads',
+                        data: Object.values(etapaData),
+                        backgroundColor: '#667eea'
+                    }]
+                }
+            });
+
+            // Objetivos
+            const objetivoData = {};
+            leadsData.forEach(lead => {
+                objetivoData[lead.objetivo] = (objetivoData[lead.objetivo] || 0) + 1;
+            });
+            new Chart(document.getElementById('chartObjetivos'), {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(objetivoData),
+                    datasets: [{
+                        data: Object.values(objetivoData),
+                        backgroundColor: ['#667eea', '#f093fb', '#4facfe']
+                    }]
+                }
+            });
+
+            // Nivel Académico
+            const nivelData = {};
+            leadsData.forEach(lead => {
+                nivelData[lead.nivel] = (nivelData[lead.nivel] || 0) + 1;
+            });
+            new Chart(document.getElementById('chartNivel'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(nivelData),
+                    datasets: [{
+                        data: Object.values(nivelData),
+                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#fa709a']
+                    }]
+                }
+            });
+
+            // Geográfico
+            const paisData = {};
+            leadsData.forEach(lead => {
+                paisData[lead.pais] = (paisData[lead.pais] || 0) + 1;
+            });
+            const topPaises = Object.entries(paisData).sort((a,b) => b[1] - a[1]).slice(0, 10);
+            new Chart(document.getElementById('chartGeografico'), {
+                type: 'horizontalBar',
+                data: {
+                    labels: topPaises.map(p => p[0]),
+                    datasets: [{
+                        label: 'Leads por País',
+                        data: topPaises.map(p => p[1]),
+                        backgroundColor: '#667eea'
+                    }]
+                }
+            });
+
+            // Urgencia
+            const urgenciaData = {
+                'ALTA (Turistas <30 días)': leadsData.filter(l => l.etapa.includes('Ya en España (Turista')).length,
+                'MEDIA (Organizando/Viajando)': leadsData.filter(l => l.etapa.includes('Organizando') || l.etapa.includes('Pronto') || l.etapa.includes('Viajando') || l.etapa.includes('Llego')).length,
+                'BAJA (Explorando)': leadsData.filter(l => l.etapa.includes('Solo explorando')).length
+            };
+            new Chart(document.getElementById('chartUrgencia'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(urgenciaData),
+                    datasets: [{
+                        label: 'Volumen',
+                        data: Object.values(urgenciaData),
+                        backgroundColor: ['#ef4444', '#f59e0b', '#10b981']
+                    }]
+                },
+                options: {
+                    indexAxis: 'y'
+                }
+            });
+        }
+
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', () => {
+            populateFilters();
+            renderLeadsTable();
+            createCharts();
+        });
+    </script>
+</body>
+</html>
