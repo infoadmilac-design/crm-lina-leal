@@ -1,0 +1,16 @@
+{
+  "name": "allpetz-whatsapp-bot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Bot de WhatsApp de ALLPETZ (catálogo, armador de plan, recordatorios) sobre WhatsApp Cloud API.",
+  "main": "webhook.js",
+  "scripts": {
+    "start": "node webhook.js",
+    "test": "node router.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

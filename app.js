@@ -3,50 +3,12 @@
   'use strict';
 
   /* ---------------------------------------------------------------- */
-  /* Datos                                                             */
+  /* Datos — catálogo y precios compartidos con el bot de WhatsApp     */
+  /* (ver catalog.js, única fuente de verdad)                          */
   /* ---------------------------------------------------------------- */
 
-  const PR = {
-    bano: [52000, 84500, 97500, 117000],
-    paseoSem: [78000, 78000, 97500, 97500],
-    paseoMes: [110500, 123500, 123500, 149500],
-    vacunas: [0, 58500, 58500, 58500],
-    dental: [78000, 78000, 104000, 104000],
-  };
-  const BARF = { 'pollo-250': 136500, 'pollo-500': 370500, 'pollo-1000': 643500, 'salmon-250': 429000, 'salmon-500': 663000, 'salmon-1000': 1053000 };
-  const BARF_DEFAULT = ['pollo-250', 'pollo-500', 'pollo-1000', 'pollo-1000'];
-  const BARF_OPTIONS = [
-    { val: 'pollo-250', label: 'Pollo · 250g' },
-    { val: 'pollo-500', label: 'Pollo · 500g' },
-    { val: 'pollo-1000', label: 'Pollo · 1kg' },
-    { val: 'salmon-250', label: 'Salmón · 250g' },
-    { val: 'salmon-500', label: 'Salmón · 500g' },
-    { val: 'salmon-1000', label: 'Salmón · 1kg' },
-  ];
-  const TIER = ['Mini · 5–8 kg', 'Pequeño · 8–15 kg', 'Mediano · 15.5–25 kg', 'Grande · 25.5+ kg'];
-  const WEIGHTS = [
-    { emo: '🐤', name: 'Mini', kg: '5–8' },
-    { emo: '🐕', name: 'Peq', kg: '8–15' },
-    { emo: '🐩', name: 'Med', kg: '15–25' },
-    { emo: '🐺', name: 'Gde', kg: '25+' },
-  ];
-  const ROW_META = {
-    bano: { id: 'bano', emoji: '🛁', label: 'Baño a domicilio', sub: 'Mensual' },
-    paseo: { id: 'paseo', emoji: '🐕', label: 'Paseos', sub: 'Con GPS en vivo' },
-    barf: { id: 'barf', emoji: '🥩', label: 'Alimentación BARF', sub: 'Plan 30 días' },
-    vacunas: { id: 'vacunas', emoji: '💉', label: 'Vacunación anual', sub: 'Prorrateado' },
-    dental: { id: 'dental', emoji: '🦷', label: 'Limpieza dental', sub: 'Profesional' },
-  };
-  const SERVICES = [
-    { id: 'paseos', emoji: '🐕', title: 'Paseos', desc: 'GPS en vivo y fotos.', bg: '#FF5A40', text: '#0E0E12', map: 'paseo' },
-    { id: 'grooming', emoji: '✂️', title: 'Grooming', desc: 'Baño y corte.', bg: '#D4FF3A', text: '#0E0E12', map: 'bano' },
-    { id: 'barf', emoji: '🥩', title: 'BARF', desc: 'Comida natural.', bg: '#BEE3FF', text: '#0E0E12', map: 'barf' },
-    { id: 'vet', emoji: '🏥', title: 'Vet', desc: 'A domicilio.', bg: '#2540FF', text: '#F4ECDC', map: 'vacunas' },
-    { id: 'entrenamiento', emoji: '🎓', title: 'Entrenamiento', desc: 'Adiestramiento.', bg: '#FFD0C7', text: '#0E0E12', map: null },
-    { id: 'transporte', emoji: '🚐', title: 'Transport', desc: 'Traslados.', bg: '#EBE0CB', text: '#0E0E12', map: null },
-    { id: 'hotel', emoji: '🏨', title: 'Hotel', desc: 'Hospedaje.', bg: '#FF5A40', text: '#0E0E12', map: null },
-    { id: 'seguro', emoji: '🛡️', title: 'Seguro', desc: 'Cobertura vet.', bg: '#D4FF3A', text: '#0E0E12', map: null },
-  ];
+  const CATALOG = window.ALLPETZ_CATALOG;
+  const { PR, BARF, BARF_DEFAULT, BARF_OPTIONS, TIER, WEIGHTS, ROW_META, SERVICES } = CATALOG;
   const PET_COLORS = ['#2540FF', '#FF5A40', '#0E0E12', '#6B6B72', '#7A4DFF', '#1F9E7A'];
 
   const BRAND_SVG = `<svg viewBox="0 0 200 200" style="width:100%;height:100%;">
@@ -132,19 +94,12 @@
   function esc(str) {
     return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
-  function cop(n) { return '$' + Math.round(n).toLocaleString('es-CO'); }
-  function fmt(n) { return n === 0 ? 'Incluido' : cop(n); }
+  const { cop, fmt } = CATALOG;
 
   function activePet() { return state.pets[state.petIdx] || state.pets[0]; }
 
   function price(id) {
-    const w = state.weightIdx;
-    if (id === 'bano') return PR.bano[w];
-    if (id === 'paseo') return state.paseoVar === 'sem' ? PR.paseoSem[w] : PR.paseoMes[w];
-    if (id === 'barf') return BARF[state.barfKey];
-    if (id === 'vacunas') return PR.vacunas[w];
-    if (id === 'dental') return PR.dental[w];
-    return 0;
+    return CATALOG.price(id, state.weightIdx, { paseoVar: state.paseoVar, barfKey: state.barfKey });
   }
   function activeRowIds() { return ['bano', 'paseo', 'barf', 'vacunas', 'dental'].filter(id => state.services[id]); }
   function computeTicketLines() {
