@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ALLPETZ · Tu pack, hoy</title>
+<meta name="theme-color" content="#EBE0CB">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="page">
+  <div class="phone" id="phone">
+
+    <!-- Dynamic Island -->
+    <div class="dynamic-island" aria-hidden="true"></div>
+
+    <!-- Status Bar -->
+    <div class="status-bar" aria-hidden="true">
+      <span class="status-time">9:41</span>
+      <div class="status-icons"><span>📶</span><span>📡</span><span>🔋</span></div>
+    </div>
+
+    <!-- App root: either the login screen or the main app renders here -->
+    <div id="app-root"></div>
+
+    <!-- Home indicator -->
+    <div class="home-indicator" aria-hidden="true"><div></div></div>
+  </div>
+</div>
+
+<div id="toast-root" class="toast-root"></div>
+<div id="modal-root"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
