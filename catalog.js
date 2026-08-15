@@ -44,6 +44,7 @@
     { id: 'grooming', emoji: '✂️', title: 'Grooming', desc: 'Baño y corte.', bg: '#D4FF3A', text: '#0E0E12', map: 'bano' },
     { id: 'barf', emoji: '🥩', title: 'BARF', desc: 'Comida natural.', bg: '#BEE3FF', text: '#0E0E12', map: 'barf' },
     { id: 'vet', emoji: '🏥', title: 'Vet', desc: 'A domicilio.', bg: '#2540FF', text: '#F4ECDC', map: 'vacunas' },
+    { id: 'dental', emoji: '🦷', title: 'Dental', desc: 'Limpieza profesional.', bg: '#C9FFDA', text: '#0E0E12', map: 'dental' },
     { id: 'entrenamiento', emoji: '🎓', title: 'Entrenamiento', desc: 'Adiestramiento.', bg: '#FFD0C7', text: '#0E0E12', map: null },
     { id: 'transporte', emoji: '🚐', title: 'Transport', desc: 'Traslados.', bg: '#EBE0CB', text: '#0E0E12', map: null },
     { id: 'hotel', emoji: '🏨', title: 'Hotel', desc: 'Hospedaje.', bg: '#FF5A40', text: '#0E0E12', map: null },
