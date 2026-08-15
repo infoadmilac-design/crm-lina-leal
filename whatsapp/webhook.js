@@ -41,7 +41,10 @@ async function send(payload) {
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) console.error('Error enviando a WhatsApp:', res.status, await res.text());
+  if (!res.ok) {
+    console.error('Error enviando a WhatsApp:', res.status, await res.text());
+    return null;
+  }
   return res.json();
 }
 
