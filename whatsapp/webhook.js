@@ -144,8 +144,13 @@ app.post('/dev/simulate', async (req, res) => {
   const { from, text, id } = req.body || {};
   if (!from) return res.status(400).json({ error: 'falta "from" (cualquier número de prueba, ej. 573001112233)' });
   const incoming = id ? { type: 'interactive', id } : { type: 'text', text: text || 'hola' };
-  const outgoing = await handleTurn(from, incoming);
-  res.json({ dryRun: !!DRY_RUN, session: session.getSession(from), outgoing });
+  try {
+    const outgoing = await handleTurn(from, incoming);
+    res.json({ dryRun: !!DRY_RUN, session: session.getSession(from), outgoing });
+  } catch (err) {
+    console.error('Error en /dev/simulate:', err);
+    res.status(500).json({ error: 'error interno' });
+  }
 });
 
 app.post('/dev/reset', (req, res) => {

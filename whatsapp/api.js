@@ -18,12 +18,23 @@ function genCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+/** Envuelve un handler async: si la promesa rechaza, responde 500 en vez de
+    tumbar el proceso entero con un unhandled rejection. */
+function ah(fn) {
+  return (req, res, next) => {
+    fn(req, res, next).catch((err) => {
+      console.error('Error en ruta /api:', err);
+      res.status(500).json({ error: 'error interno' });
+    });
+  };
+}
+
 /** send: la función send(payload) de webhook.js, ya sabe hablar con la Graph API (o DRY_RUN). */
 function createApiRouter({ send, textMessage }) {
   const router = express.Router();
   router.use(express.json());
 
-  router.post('/auth/request-code', async (req, res) => {
+  router.post('/auth/request-code', ah(async (req, res) => {
     const phone = normalizePhone(req.body?.phone);
     if (!phone) return res.status(400).json({ error: 'falta "phone"' });
     if (!db.enabled) return res.status(503).json({ error: 'base de datos no configurada (DATABASE_URL)' });
@@ -31,9 +42,9 @@ function createApiRouter({ send, textMessage }) {
     await db.saveAuthCode(phone, code, CODE_TTL_MS);
     await send(textMessage(phone, `🐾 Tu código ALLPETZ para entrar a la app es: ${code}\nVence en 10 minutos.`));
     res.json({ sent: true });
-  });
+  }));
 
-  router.post('/auth/verify-code', async (req, res) => {
+  router.post('/auth/verify-code', ah(async (req, res) => {
     const phone = normalizePhone(req.body?.phone);
     const code = String(req.body?.code || '');
     if (!phone || !code) return res.status(400).json({ error: 'falta "phone" o "code"' });
@@ -41,24 +52,24 @@ function createApiRouter({ send, textMessage }) {
     if (!ok) return res.status(401).json({ error: 'código inválido o vencido' });
     const token = await db.createAuthToken(phone, TOKEN_TTL_MS);
     res.json({ token, phone });
-  });
+  }));
 
-  async function requireAuth(req, res, next) {
+  const requireAuth = ah(async (req, res, next) => {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     const phone = token && (await db.phoneForToken(token));
     if (!phone) return res.status(401).json({ error: 'no autenticado' });
     req.phone = phone;
     next();
-  }
+  });
 
-  router.get('/me', requireAuth, async (req, res) => {
+  router.get('/me', requireAuth, ah(async (req, res) => {
     const data = await db.getCustomerFull(req.phone);
     if (!data) return res.status(404).json({ error: 'cliente no encontrado' });
     res.json(data);
-  });
+  }));
 
-  router.post('/bookings', requireAuth, async (req, res) => {
+  router.post('/bookings', requireAuth, ah(async (req, res) => {
     const { petId, services, weightIdx, priceOpts } = req.body || {};
     if (!Array.isArray(services) || !services.length) return res.status(400).json({ error: 'falta "services"' });
     const opts = priceOpts || {};
@@ -76,12 +87,12 @@ function createApiRouter({ send, textMessage }) {
       source: 'app',
     });
     res.json({ created: lines.length });
-  });
+  }));
 
-  router.get('/collaborators/:id/bookings', async (req, res) => {
+  router.get('/collaborators/:id/bookings', ah(async (req, res) => {
     const rows = await db.listCollaboratorBookings(req.params.id);
     res.json({ bookings: rows });
-  });
+  }));
 
   return router;
 }
