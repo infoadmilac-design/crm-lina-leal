@@ -7,7 +7,10 @@
 'use strict';
 
 const CATALOG = require('../catalog.js');
-const { SERVICES, WEIGHTS, ROW_META, BUILDER_ROW_IDS, BARF_OPTIONS, TIER, cop, fmt, price } = CATALOG;
+const {
+  SERVICES, WEIGHTS, ROW_META, BUILDER_ROW_IDS, BARF_OPTIONS, TIER, cop, fmt, price,
+  BANO_VARIANT_ORDER, PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD,
+} = CATALOG;
 
 function base(to) {
   return { messaging_product: 'whatsapp', to, recipient_type: 'individual' };
@@ -15,6 +18,10 @@ function base(to) {
 
 function textMessage(to, body) {
   return { ...base(to), type: 'text', text: { body, preview_url: false } };
+}
+
+function imageMessage(to, link, caption) {
+  return { ...base(to), type: 'image', image: { link, ...(caption ? { caption } : {}) } };
 }
 
 function listMessage(to, { header, body, footer, buttonLabel, sections }) {
@@ -31,12 +38,13 @@ function listMessage(to, { header, body, footer, buttonLabel, sections }) {
   };
 }
 
-function buttonMessage(to, { body, footer, buttons }) {
+function buttonMessage(to, { header, body, footer, buttons }) {
   return {
     ...base(to),
     type: 'interactive',
     interactive: {
       type: 'button',
+      ...(header ? { header } : {}),
       body: { text: body },
       ...(footer ? { footer: { text: footer } } : {}),
       action: {
@@ -44,6 +52,23 @@ function buttonMessage(to, { body, footer, buttons }) {
       },
     },
   };
+}
+
+/* ---- 0. Onboarding: bienvenida emocional + nombre, peso y raza ---- */
+function welcomeIntro(to) {
+  return textMessage(
+    to,
+    '¡Guau, hola! 🐾 Soy la voz (bueno, la patita escritora) de ALLPETZ: el ecosistema que junta en un solo lugar TODO lo que tu mejor amigo de cuatro patas va a necesitar — paseos, baño, comida rica, vacunas, dientes limpios, entrenamiento, transporte, hotel y hasta seguro.\n\n' +
+      'Nada de andar buscando 5 contactos distintos cada vez que se te ocurre algo. En unos minutos armamos el plan perfecto según su tamaño, y listo: tú te olvidas de estar pendiente, porque nosotros te recordamos cada cita a tiempo. Menos preocupaciones para ti, más cariño para tu peludo 🐶✨'
+  );
+}
+
+function askPetName(to) {
+  return textMessage(to, 'Para empezar, cuéntame: ¿cómo se llama tu mascota?');
+}
+
+function askBreed(to, petName) {
+  return textMessage(to, `Perfecto 🐕 ¿Qué raza es ${petName} (o mezcla)? Escribe "omitir" si prefieres no decirlo.`);
 }
 
 /* ---- 1. Menú principal ---- */
@@ -65,7 +90,14 @@ function mainMenu(to, userName) {
   });
 }
 
-/* ---- 2a. Catálogo (8 servicios) ---- */
+/* ---- 2a. Catálogo (9 servicios) ---- */
+// Foto genérica de banco de imágenes, servida como miniatura <1MB (no es una foto real de ALLPETZ).
+const CATALOG_HERO_PHOTO = 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Girl_walking_dog_001.jpg/960px-Girl_walking_dog_001.jpg';
+
+function catalogIntro(to) {
+  return imageMessage(to, CATALOG_HERO_PHOTO, 'ALLPETZ 🐾 — cuidado para tu mascota');
+}
+
 function catalogList(to) {
   return listMessage(to, {
     body: 'Elige y combina 🐾',
@@ -83,13 +115,18 @@ function catalogList(to) {
   });
 }
 
-function catalogDetail(to, service) {
+function catalogDetail(to, service, weightIdx) {
   const inBuilder = !!service.map;
+  const priceLine = inBuilder && weightIdx != null
+    ? `\n\nDesde *${fmt(price(service.map, weightIdx, {}))}* para tu mascota.`
+    : '';
+  const body = `${service.emoji} *${service.title}*\n\n${service.pitch || service.desc}${priceLine}`;
   return buttonMessage(to, {
-    body: `${service.emoji} *${service.title}*\n${service.desc}`,
+    ...(service.photo ? { header: { type: 'image', image: { link: service.photo } } } : {}),
+    body,
     buttons: inBuilder
       ? [
-          { id: `add_${service.map}`, title: 'Agregar a mi plan' },
+          { id: `add_${service.map}`, title: 'Empezar a configurar' },
           { id: 'back_menu', title: '‹ Volver al menú' },
         ]
       : [
@@ -99,7 +136,7 @@ function catalogDetail(to, service) {
   });
 }
 
-/* ---- 2b. Armar plan: paso 1, peso ---- */
+/* ---- 2b. Armar plan: paso 1, peso (también usado en onboarding) ---- */
 function weightPicker(to) {
   return listMessage(to, {
     body: '¿Cuánto pesa tu mascota?',
@@ -142,13 +179,69 @@ function servicesChecklist(to, weightIdx, selected) {
   });
 }
 
-/* ---- variante de paseo (2 botones) ---- */
-function paseoVariantButtons(to) {
+/* ---- baño: subtipo + notas ---- */
+const BANO_ROW_LABEL = {
+  general: 'Baño general',
+  corte: 'Baño y corte',
+  corte_raza: 'Corte según raza',
+};
+
+function banoVariantList(to, weightIdx) {
+  return listMessage(to, {
+    body: '🛁 Baño: ¿qué tipo de servicio quieres?',
+    buttonLabel: 'Elegir tipo',
+    sections: [
+      {
+        title: 'Tipos de baño',
+        rows: BANO_VARIANT_ORDER.map((key) => ({
+          id: `bano_${key}`,
+          title: BANO_ROW_LABEL[key],
+          description: fmt(CATALOG.banoVariantPrice(weightIdx, key)),
+        })),
+      },
+    ],
+  });
+}
+
+function banoNotesPrompt(to) {
+  return textMessage(to, '¿Alguna instrucción especial para el corte (largo, estilo, zonas a evitar)? Escríbela, o responde "ninguna".');
+}
+
+/* ---- paseo: frecuencia + duración + modalidad ---- */
+function paseoFrequencyList(to, weightIdx) {
+  return listMessage(to, {
+    body: '🐕 Paseos: ¿con qué frecuencia a la semana?',
+    buttonLabel: 'Elegir frecuencia',
+    sections: [
+      {
+        title: 'Frecuencia',
+        rows: PASEO_FREQ_OPTIONS.map((n) => ({
+          id: `paseofreq_${n}`,
+          title: `${n}×/semana`,
+          description: fmt(CATALOG.paseoPrice(weightIdx, n, 'corta', 'solo')),
+        })),
+      },
+    ],
+  });
+}
+
+function paseoDurationButtons(to) {
   return buttonMessage(to, {
-    body: '🐕 Paseos: ¿con qué frecuencia?',
+    body: '⏱️ ¿Cuánto debe durar cada paseo?',
     buttons: [
-      { id: 'paseo_sem', title: '1×/semana' },
-      { id: 'paseo_mes', title: '5×/semana' },
+      { id: 'paseodur_corta', title: PASEO_DURATION.corta.label },
+      { id: 'paseodur_larga', title: '1h - 1h30' },
+    ],
+  });
+}
+
+function paseoModalidadButtons(to) {
+  return buttonMessage(to, {
+    body: '🎾 ¿Cómo prefieres el paseo: individual, en grupo pequeño con juego, o grupal?',
+    buttons: [
+      { id: 'paseomod_solo', title: 'Individual' },
+      { id: 'paseomod_juego', title: 'Con juego (máx 3)' },
+      { id: 'paseomod_grupal', title: 'Grupal (máx 8)' },
     ],
   });
 }
@@ -163,6 +256,17 @@ function barfOptionsList(to) {
         title: 'Combos',
         rows: BARF_OPTIONS.map((o) => ({ id: `barf_${o.val}`, title: o.label, description: fmt(CATALOG.BARF[o.val]) })),
       },
+    ],
+  });
+}
+
+/* ---- tras configurar un servicio: seguir agregando o ver resumen ---- */
+function serviceAddedButtons(to, summaryLine) {
+  return buttonMessage(to, {
+    body: `✅ ${summaryLine}\n¿Quieres agregar otro servicio o ver el resumen de tu plan?`,
+    buttons: [
+      { id: 'catalog_add_another', title: '➕ Agregar otro' },
+      { id: 'catalog_view_summary', title: '🧾 Ver resumen' },
     ],
   });
 }
@@ -225,15 +329,25 @@ function humanHandoff(to) {
 
 module.exports = {
   textMessage,
+  imageMessage,
   listMessage,
   buttonMessage,
+  welcomeIntro,
+  askPetName,
+  askBreed,
   mainMenu,
+  catalogIntro,
   catalogList,
   catalogDetail,
   weightPicker,
   servicesChecklist,
-  paseoVariantButtons,
+  banoVariantList,
+  banoNotesPrompt,
+  paseoFrequencyList,
+  paseoDurationButtons,
+  paseoModalidadButtons,
   barfOptionsList,
+  serviceAddedButtons,
   ticketSummary,
   planConfirmed,
   upcomingList,

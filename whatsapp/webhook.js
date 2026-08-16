@@ -60,8 +60,9 @@ function normalizeIncoming(message) {
   return { type: 'text', text: '' };
 }
 
-async function handleTurn(from, incoming) {
+async function handleTurn(from, incoming, profileName) {
   const s = session.getSession(from);
+  if (profileName && !s.ownerName) s.ownerName = profileName;
   const outgoing = router.handle(from, s, incoming);
   for (const payload of outgoing) await send(payload);
   return outgoing;
@@ -84,7 +85,8 @@ app.post('/webhook', async (req, res) => {
     const value = req.body?.entry?.[0]?.changes?.[0]?.value;
     const message = value?.messages?.[0];
     if (!message) return; // status updates (entregado/leído) no traen "messages"
-    await handleTurn(message.from, normalizeIncoming(message));
+    const profileName = value?.contacts?.[0]?.profile?.name || null;
+    await handleTurn(message.from, normalizeIncoming(message), profileName);
   } catch (err) {
     console.error('Error procesando webhook:', err);
   }

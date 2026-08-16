@@ -9,16 +9,26 @@ const M = require('./messages.js');
 const { ticketFor } = require('./session.js');
 
 const GREETING_RE = /^(hola|hi|menu|inicio|buenas)/i;
+// Steps donde cualquier texto se captura como dato (nombre, raza, notas),
+// nunca como el atajo global de saludo.
+const FREE_TEXT_STEPS = ['onboarding_petname', 'onboarding_breed', 'catalog_bano_notes'];
+const ONBOARDING_STEPS = ['onboarding_petname', 'onboarding_weight', 'onboarding_breed'];
 
 function handle(to, session, incoming) {
-  // Disparador global: "hola" / "menu" reinicia al menú principal desde cualquier paso.
-  if (incoming.type === 'text' && GREETING_RE.test(incoming.text.trim())) {
+  const inFreeTextCapture = FREE_TEXT_STEPS.includes(session.step);
+
+  // Disparador global: "hola" / "menu" reinicia al menú principal desde
+  // cualquier paso — salvo mientras se está esperando texto libre (nombre,
+  // raza, notas), donde ese mismo texto es un dato, no un comando.
+  if (incoming.type === 'text' && !inFreeTextCapture && GREETING_RE.test(incoming.text.trim())) {
+    if (!session.onboarded) return startOnboarding(to, session);
     session.step = 'menu';
-    return [M.mainMenu(to, session.petName === 'tu mascota' ? 'de nuevo' : session.petName)];
+    return [M.mainMenu(to, session.petName || 'de nuevo')];
   }
   if (incoming.type === 'interactive' && incoming.id === 'back_menu') {
+    if (!session.onboarded) return startOnboarding(to, session);
     session.step = 'menu';
-    return [M.mainMenu(to, 'de nuevo')];
+    return [M.mainMenu(to, session.petName || 'de nuevo')];
   }
 
   // Botones de "mis servicios" llegan con el id de la reserva incrustado,
@@ -27,21 +37,42 @@ function handle(to, session, incoming) {
     return handleBookingAction(to, session, incoming.id);
   }
 
+  // Todo usuario nuevo pasa por onboarding antes que cualquier otra cosa.
+  if (!session.onboarded && !ONBOARDING_STEPS.includes(session.step)) {
+    return startOnboarding(to, session);
+  }
+
   switch (session.step) {
+    case 'onboarding_petname':
+      return handleOnboardingPetName(to, session, incoming);
+    case 'onboarding_weight':
+      return handleOnboardingWeight(to, session, incoming);
+    case 'onboarding_breed':
+      return handleOnboardingBreed(to, session, incoming);
     case 'menu':
       return handleMenu(to, session, incoming);
     case 'catalog':
       return handleCatalog(to, session, incoming);
     case 'catalog_detail':
       return handleCatalogDetail(to, session, incoming);
+    case 'catalog_bano_variant':
+      return handleCatalogBanoVariant(to, session, incoming);
+    case 'catalog_bano_notes':
+      return handleCatalogBanoNotes(to, session, incoming);
+    case 'catalog_paseo_freq':
+      return handleCatalogPaseoFreq(to, session, incoming);
+    case 'catalog_paseo_duration':
+      return handleCatalogPaseoDuration(to, session, incoming);
+    case 'catalog_paseo_modalidad':
+      return handleCatalogPaseoModalidad(to, session, incoming);
+    case 'catalog_barf_variant':
+      return handleCatalogBarfVariant(to, session, incoming);
+    case 'catalog_added':
+      return handleCatalogAdded(to, session, incoming);
     case 'plan_weight':
       return handlePlanWeight(to, session, incoming);
     case 'plan_services':
       return handlePlanServices(to, session, incoming);
-    case 'plan_paseo_variant':
-      return handlePaseoVariant(to, session, incoming);
-    case 'plan_barf_variant':
-      return handleBarfVariant(to, session, incoming);
     case 'plan_summary':
       return handlePlanSummary(to, session, incoming);
     case 'servicios':
@@ -50,17 +81,59 @@ function handle(to, session, incoming) {
       return [M.humanHandoff(to)];
     default:
       session.step = 'menu';
-      return [M.mainMenu(to, 'de nuevo')];
+      return [M.mainMenu(to, session.petName || 'de nuevo')];
   }
 }
 
+/* ---- 0. Onboarding ---- */
+function startOnboarding(to, session) {
+  session.step = 'onboarding_petname';
+  return [M.welcomeIntro(to), M.askPetName(to)];
+}
+
+function handleOnboardingPetName(to, session, incoming) {
+  if (incoming.type === 'text' && incoming.text.trim()) {
+    session.petName = incoming.text.trim();
+    session.step = 'onboarding_weight';
+    return [M.weightPicker(to)];
+  }
+  return [M.askPetName(to)];
+}
+
+function handleOnboardingWeight(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('weight_')) {
+    const idx = Number(incoming.id.slice('weight_'.length));
+    session.weightIdx = idx;
+    session.barfKey = CATALOG.BARF_DEFAULT[idx];
+    session.step = 'onboarding_breed';
+    return [M.askBreed(to, session.petName)];
+  }
+  return [M.weightPicker(to)];
+}
+
+function handleOnboardingBreed(to, session, incoming) {
+  if (incoming.type === 'text') {
+    const t = incoming.text.trim();
+    session.petBreed = /^omitir$/i.test(t) ? null : t;
+    session.onboarded = true;
+    session.step = 'menu';
+    return [M.mainMenu(to, session.petName)];
+  }
+  return [M.askBreed(to, session.petName)];
+}
+
+/* ---- menú y catálogo ---- */
 function handleMenu(to, session, incoming) {
-  if (incoming.type !== 'interactive') return [M.mainMenu(to, 'de nuevo')];
+  if (incoming.type !== 'interactive') return [M.mainMenu(to, session.petName || 'de nuevo')];
   switch (incoming.id) {
     case 'menu_catalogo':
       session.step = 'catalog';
-      return [M.catalogList(to)];
+      return [M.catalogIntro(to), M.catalogList(to)];
     case 'menu_plan':
+      if (session.onboarded) {
+        session.step = 'plan_services';
+        return [M.servicesChecklist(to, session.weightIdx, session.services)];
+      }
       session.step = 'plan_weight';
       return [M.weightPicker(to)];
     case 'menu_servicios':
@@ -70,7 +143,7 @@ function handleMenu(to, session, incoming) {
       session.step = 'human';
       return [M.humanHandoff(to)];
     default:
-      return [M.mainMenu(to, 'de nuevo')];
+      return [M.mainMenu(to, session.petName || 'de nuevo')];
   }
 }
 
@@ -81,7 +154,7 @@ function handleCatalog(to, session, incoming) {
     if (!svc) return [M.catalogList(to)];
     session.lastServiceId = svcId;
     session.step = 'catalog_detail';
-    return [M.catalogDetail(to, svc)];
+    return [M.catalogDetail(to, svc, session.weightIdx)];
   }
   return [M.catalogList(to)];
 }
@@ -90,17 +163,117 @@ function handleCatalogDetail(to, session, incoming) {
   if (incoming.type === 'interactive' && incoming.id.startsWith('add_')) {
     const builderId = incoming.id.slice('add_'.length);
     session.services[builderId] = true;
-    session.step = 'plan_services'; // salta el paso de peso: ya viene de un servicio concreto
-    return [M.servicesChecklist(to, session.weightIdx, session.services)];
+    session.returnTo = 'catalog';
+    return startServiceConfig(to, session, builderId);
   }
   if (incoming.type === 'interactive' && incoming.id === 'notify_soon') {
     session.step = 'menu';
-    return [M.textMessage(to, 'Anotado — te avisamos apenas esté disponible en la app 🐾'), M.mainMenu(to, 'de nuevo')];
+    return [M.textMessage(to, 'Anotado — te avisamos apenas esté disponible en la app 🐾'), M.mainMenu(to, session.petName || 'de nuevo')];
   }
   session.step = 'menu';
-  return [M.mainMenu(to, 'de nuevo')];
+  return [M.mainMenu(to, session.petName || 'de nuevo')];
 }
 
+/* Cada servicio con variantes se configura aquí mismo, apenas se elige —
+   tanto desde el catálogo (session.returnTo = 'catalog') como desde el
+   armador de plan por lote (session.returnTo = 'bulk'). */
+function startServiceConfig(to, session, builderId) {
+  if (builderId === 'bano') {
+    session.step = 'catalog_bano_variant';
+    return [M.banoVariantList(to, session.weightIdx)];
+  }
+  if (builderId === 'paseo') {
+    session.step = 'catalog_paseo_freq';
+    return [M.paseoFrequencyList(to, session.weightIdx)];
+  }
+  if (builderId === 'barf') {
+    session.step = 'catalog_barf_variant';
+    return [M.barfOptionsList(to)];
+  }
+  // vacunas / dental: sin variantes, se agregan directo.
+  return finishServiceConfig(to, session, builderId);
+}
+
+function finishServiceConfig(to, session, builderId) {
+  if (session.returnTo === 'bulk') {
+    if (builderId === 'paseo' && session.services.barf) {
+      return startServiceConfig(to, session, 'barf');
+    }
+    session.step = 'plan_summary';
+    const { lines, total } = ticketFor(session);
+    return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
+  }
+  const meta = CATALOG.ROW_META[builderId];
+  session.step = 'catalog_added';
+  return [M.serviceAddedButtons(to, `${meta.emoji} ${meta.label} agregado a tu plan.`)];
+}
+
+function handleCatalogBanoVariant(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('bano_')) {
+    session.banoVariant = incoming.id.slice('bano_'.length);
+    session.step = 'catalog_bano_notes';
+    return [M.banoNotesPrompt(to)];
+  }
+  return [M.banoVariantList(to, session.weightIdx)];
+}
+
+function handleCatalogBanoNotes(to, session, incoming) {
+  if (incoming.type === 'text') {
+    const t = incoming.text.trim();
+    session.banoNotes = /^ninguna$/i.test(t) ? null : t;
+    return finishServiceConfig(to, session, 'bano');
+  }
+  return [M.banoNotesPrompt(to)];
+}
+
+function handleCatalogPaseoFreq(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('paseofreq_')) {
+    session.paseoFreq = Number(incoming.id.slice('paseofreq_'.length));
+    session.step = 'catalog_paseo_duration';
+    return [M.paseoDurationButtons(to)];
+  }
+  return [M.paseoFrequencyList(to, session.weightIdx)];
+}
+
+function handleCatalogPaseoDuration(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('paseodur_')) {
+    session.paseoDuration = incoming.id.slice('paseodur_'.length);
+    session.step = 'catalog_paseo_modalidad';
+    return [M.paseoModalidadButtons(to)];
+  }
+  return [M.paseoDurationButtons(to)];
+}
+
+function handleCatalogPaseoModalidad(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('paseomod_')) {
+    session.paseoModalidad = incoming.id.slice('paseomod_'.length);
+    return finishServiceConfig(to, session, 'paseo');
+  }
+  return [M.paseoModalidadButtons(to)];
+}
+
+function handleCatalogBarfVariant(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('barf_')) {
+    session.barfKey = incoming.id.slice('barf_'.length);
+    return finishServiceConfig(to, session, 'barf');
+  }
+  return [M.barfOptionsList(to)];
+}
+
+function handleCatalogAdded(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id === 'catalog_add_another') {
+    session.step = 'catalog';
+    return [M.catalogList(to)];
+  }
+  if (incoming.type === 'interactive' && incoming.id === 'catalog_view_summary') {
+    session.step = 'plan_summary';
+    const { lines, total } = ticketFor(session);
+    return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
+  }
+  return [M.serviceAddedButtons(to, 'Tu plan se sigue armando.')];
+}
+
+/* ---- Armar mi plan (selección múltiple por lote) ---- */
 function handlePlanWeight(to, session, incoming) {
   if (incoming.type === 'interactive' && incoming.id.startsWith('weight_')) {
     const idx = Number(incoming.id.slice('weight_'.length));
@@ -126,41 +299,12 @@ function handlePlanServices(to, session, incoming) {
 }
 
 function advancePastServices(to, session) {
-  if (session.services.paseo) {
-    session.step = 'plan_paseo_variant';
-    return [M.paseoVariantButtons(to)];
-  }
-  if (session.services.barf) {
-    session.step = 'plan_barf_variant';
-    return [M.barfOptionsList(to)];
-  }
+  session.returnTo = 'bulk';
+  if (session.services.paseo) return startServiceConfig(to, session, 'paseo');
+  if (session.services.barf) return startServiceConfig(to, session, 'barf');
   session.step = 'plan_summary';
   const { lines, total } = ticketFor(session);
   return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
-}
-
-function handlePaseoVariant(to, session, incoming) {
-  if (incoming.type === 'interactive' && (incoming.id === 'paseo_sem' || incoming.id === 'paseo_mes')) {
-    session.paseoVar = incoming.id === 'paseo_sem' ? 'sem' : 'mes';
-    if (session.services.barf) {
-      session.step = 'plan_barf_variant';
-      return [M.barfOptionsList(to)];
-    }
-    session.step = 'plan_summary';
-    const { lines, total } = ticketFor(session);
-    return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
-  }
-  return [M.paseoVariantButtons(to)];
-}
-
-function handleBarfVariant(to, session, incoming) {
-  if (incoming.type === 'interactive' && incoming.id.startsWith('barf_')) {
-    session.barfKey = incoming.id.slice('barf_'.length);
-    session.step = 'plan_summary';
-    const { lines, total } = ticketFor(session);
-    return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
-  }
-  return [M.barfOptionsList(to)];
 }
 
 function handlePlanSummary(to, session, incoming) {
@@ -171,7 +315,7 @@ function handlePlanSummary(to, session, incoming) {
   if (incoming.id === 'plan_confirm') {
     session.step = 'menu';
     session.planConfirmedAt = Date.now();
-    return [M.planConfirmed(to, session.petName), M.mainMenu(to, 'de nuevo')];
+    return [M.planConfirmed(to, session.petName), M.mainMenu(to, session.petName || 'de nuevo')];
   }
   if (incoming.id === 'plan_edit') {
     session.step = 'plan_services';
@@ -181,6 +325,7 @@ function handlePlanSummary(to, session, incoming) {
   return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
 }
 
+/* ---- mis servicios ---- */
 function handleServiciosList(to, session, incoming) {
   if (incoming.type === 'interactive' && incoming.id.startsWith('booking_')) {
     const bookingId = incoming.id.slice('booking_'.length);
@@ -192,16 +337,16 @@ function handleServiciosList(to, session, incoming) {
 
 function handleBookingAction(to, session, id) {
   const m = id.match(/^booking_(confirm|reschedule|cancel)_(.+)$/);
-  if (!m) return [M.mainMenu(to, 'de nuevo')];
+  if (!m) return [M.mainMenu(to, session.petName || 'de nuevo')];
   const [, action, bookingId] = m;
   const booking = session.bookings.find((b) => b.id === bookingId);
   session.step = 'menu';
-  if (!booking) return [M.mainMenu(to, 'de nuevo')];
+  if (!booking) return [M.mainMenu(to, session.petName || 'de nuevo')];
   if (action === 'confirm') booking.status = 'confirmado';
   if (action === 'cancel') booking.status = 'cancelado';
   if (action === 'reschedule') booking.status = 'agendado';
   const verb = { confirm: 'confirmado', cancel: 'cancelado', reschedule: 'marcado para reagendar' }[action];
-  return [M.textMessage(to, `Listo, ${booking.title.toLowerCase()} quedó ${verb} ✅`), M.mainMenu(to, 'de nuevo')];
+  return [M.textMessage(to, `Listo, ${booking.title.toLowerCase()} quedó ${verb} ✅`), M.mainMenu(to, session.petName || 'de nuevo')];
 }
 
 module.exports = { handle };

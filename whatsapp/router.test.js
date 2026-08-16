@@ -11,7 +11,7 @@ function step(from, s, incoming, label) {
   console.log(`\n— ${label} —`);
   for (const msg of out) {
     const kind = msg.type === 'interactive' ? msg.interactive.type : msg.type;
-    const preview = msg.type === 'text' ? msg.text.body : msg.interactive.body.text;
+    const preview = msg.type === 'text' ? msg.text.body : msg.type === 'image' ? `(imagen) ${msg.image.caption || ''}` : msg.interactive.body.text;
     console.log(`  [${kind}] ${preview.replace(/\n/g, ' ⏎ ')}`);
   }
   return out;
@@ -20,39 +20,81 @@ function step(from, s, incoming, label) {
 const to = '573001112233';
 const s = session.resetSession(to);
 
-let out = step(to, s, { type: 'text', text: 'hola' }, 'saludo inicial');
-assert.equal(s.step, 'menu');
-assert.equal(out[0].interactive.action.sections[0].rows.length, 4, 'el menú debe tener 4 opciones');
+// ---- Onboarding ----
+let out = step(to, s, { type: 'text', text: 'hola' }, 'primer contacto: "hola"');
+assert.equal(s.step, 'onboarding_petname', 'debe pedir el nombre de la mascota antes que nada');
+assert.equal(s.onboarded, false);
 
-out = step(to, s, { type: 'interactive', id: 'menu_plan' }, 'toca "Armar mi plan"');
-assert.equal(s.step, 'plan_weight');
+out = step(to, s, { type: 'text', text: 'Firulais' }, 'da el nombre de la mascota');
+assert.equal(s.petName, 'Firulais');
+assert.equal(s.step, 'onboarding_weight');
 
 out = step(to, s, { type: 'interactive', id: 'weight_2' }, 'elige peso Mediano');
-assert.equal(s.step, 'plan_services');
 assert.equal(s.weightIdx, 2);
-assert.equal(s.barfKey, 'pollo-1000', 'debe tomar el default de BARF para ese peso');
+assert.equal(s.step, 'onboarding_breed');
 
-assert.equal(s.services.dental, true, 'dental viene activo por default');
-out = step(to, s, { type: 'interactive', id: 'toggle_dental' }, 'desactiva limpieza dental');
-assert.equal(s.services.dental, false, 'el toggle debe invertir el valor');
+out = step(to, s, { type: 'text', text: 'Labrador' }, 'da la raza');
+assert.equal(s.petBreed, 'Labrador');
+assert.equal(s.onboarded, true, 'el onboarding debe quedar completo');
+assert.equal(s.step, 'menu');
+assert.ok(out[0].interactive.body.text.includes('Firulais'), 'el menú debe saludar con el nombre de la mascota');
 
-out = step(to, s, { type: 'interactive', id: 'services_continue' }, 'continuar');
-assert.equal(s.step, 'plan_paseo_variant', 'paseos está activo por default, debe preguntar variante');
+// Un "hola" luego de onboarded debe ir directo al menú, no repetir onboarding.
+out = step(to, s, { type: 'text', text: 'hola' }, 'saluda de nuevo, ya onboarded');
+assert.equal(s.step, 'menu');
 
-out = step(to, s, { type: 'interactive', id: 'paseo_mes' }, 'elige 5×/semana');
-assert.equal(s.step, 'plan_barf_variant', 'BARF sigue activo, debe preguntar variante');
+// ---- Catálogo: cada servicio se configura apenas se elige ----
+out = step(to, s, { type: 'interactive', id: 'menu_catalogo' }, 'toca "Catálogo"');
+assert.equal(s.step, 'catalog');
+assert.equal(out.length, 2, 'debe mandar una imagen y luego la lista');
 
-out = step(to, s, { type: 'interactive', id: 'barf_salmon-500' }, 'elige Salmón · 500g');
+out = step(to, s, { type: 'interactive', id: 'catalog_paseos' }, 'toca "Paseos" en el catálogo');
+assert.equal(s.step, 'catalog_detail');
+assert.ok(out[0].interactive.body.text.includes('Desde'), 'debe mostrar precio de referencia para el tamaño ya conocido');
+
+out = step(to, s, { type: 'interactive', id: 'add_paseo' }, 'empieza a configurar el paseo');
+assert.equal(s.services.paseo, true);
+assert.equal(s.step, 'catalog_paseo_freq', 'debe preguntar la frecuencia ahí mismo, no al final');
+
+out = step(to, s, { type: 'interactive', id: 'paseofreq_5' }, 'elige 5×/semana');
+assert.equal(s.paseoFreq, 5);
+assert.equal(s.step, 'catalog_paseo_duration');
+
+out = step(to, s, { type: 'interactive', id: 'paseodur_larga' }, 'elige duración larga (1h-1h30)');
+assert.equal(s.paseoDuration, 'larga');
+assert.equal(s.step, 'catalog_paseo_modalidad');
+
+out = step(to, s, { type: 'interactive', id: 'paseomod_juego' }, 'elige paseo + juego');
+assert.equal(s.paseoModalidad, 'juego');
+assert.equal(s.step, 'catalog_added', 'tras configurar, debe ofrecer agregar otro o ver resumen');
+
+out = step(to, s, { type: 'interactive', id: 'catalog_add_another' }, 'agrega otro servicio');
+assert.equal(s.step, 'catalog');
+
+out = step(to, s, { type: 'interactive', id: 'catalog_grooming' }, 'toca "Grooming" (baño) en el catálogo');
+out = step(to, s, { type: 'interactive', id: 'add_bano' }, 'empieza a configurar el baño');
+assert.equal(s.step, 'catalog_bano_variant', 'debe preguntar el subtipo de baño ahí mismo');
+
+out = step(to, s, { type: 'interactive', id: 'bano_corte_raza' }, 'elige "corte según raza"');
+assert.equal(s.banoVariant, 'corte_raza');
+assert.equal(s.step, 'catalog_bano_notes', 'debe pedir notas para el corte');
+
+out = step(to, s, { type: 'text', text: 'corte bajo, sin motas en las orejas' }, 'escribe notas del corte');
+assert.equal(s.banoNotes, 'corte bajo, sin motas en las orejas');
+assert.equal(s.step, 'catalog_added');
+
+out = step(to, s, { type: 'interactive', id: 'catalog_view_summary' }, 've el resumen del plan');
 assert.equal(s.step, 'plan_summary');
-assert.equal(s.barfKey, 'salmon-500');
 const ticketBody = out[0].interactive.body.text;
 assert.ok(ticketBody.includes('Total mensual'), 'el resumen debe mostrar el total');
+assert.ok(ticketBody.includes('Baño y corte según raza'), 'el resumen debe reflejar el subtipo de baño elegido');
 console.log('  (total calculado en el resumen ⇧)');
 
 out = step(to, s, { type: 'interactive', id: 'plan_confirm' }, 'confirmar plan');
 assert.equal(s.step, 'menu');
 assert.ok(s.planConfirmedAt, 'debe quedar marcado como confirmado');
 
+// ---- Mis servicios (sin cambios de fondo) ----
 out = step(to, s, { type: 'interactive', id: 'menu_servicios' }, 'ver mis servicios');
 assert.equal(s.step, 'servicios');
 
@@ -62,4 +104,4 @@ out = step(to, s, { type: 'interactive', id: firstBookingId }, 'abre el primer s
 out = step(to, s, { type: 'interactive', id: `booking_confirm_${s.bookings[0].id}` }, 'confirma ese servicio (o llega vía plantilla de recordatorio)');
 assert.equal(s.bookings[0].status, 'confirmado');
 
-console.log('\n✅ Todas las verificaciones pasaron — el flujo completo del diagrama funciona de punta a punta.');
+console.log('\n✅ Todas las verificaciones pasaron — el nuevo flujo (onboarding + catálogo configurando cada servicio al vuelo) funciona de punta a punta.');
