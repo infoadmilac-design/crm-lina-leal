@@ -9,9 +9,14 @@
 
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const session = require('./session.js');
 const router = require('./router.js');
 const { createReminderScheduler } = require('./reminders.js');
+const db = require('./db.js');
+const { createApiRouter } = require('./api.js');
+const M = require('./messages.js');
+const CATALOG = require('../catalog.js');
 
 const {
   VERIFY_TOKEN = 'allpetz-dev-token',
@@ -23,6 +28,7 @@ const {
 } = process.env;
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 const sentLog = [];
@@ -60,11 +66,50 @@ function normalizeIncoming(message) {
   return { type: 'text', text: '' };
 }
 
+/** Guarda en la base de datos los dos momentos de negocio que le importan al
+    resto del sistema (app + colaboradores) — el motor de conversación
+    (router.js) sigue siendo puro y no sabe nada de esto. */
+async function persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt) {
+  if (!db.enabled) return;
+  try {
+    if (!wasOnboarded && s.onboarded) {
+      await db.upsertCustomerAndPet(from, {
+        ownerName: s.ownerName,
+        petName: s.petName,
+        petBreed: s.petBreed,
+        weightIdx: s.weightIdx,
+      });
+    }
+    if (!hadPlanConfirmedAt && s.planConfirmedAt) {
+      const activeIds = session.activeServiceIds(s);
+      const opts = {
+        banoVariant: s.banoVariant,
+        paseoFreq: s.paseoFreq,
+        paseoDuration: s.paseoDuration,
+        paseoModalidad: s.paseoModalidad,
+        barfKey: s.barfKey,
+      };
+      const petId = await db.latestPetId(from);
+      const lines = activeIds.map((serviceId) => ({
+        serviceId,
+        label: CATALOG.ROW_META[serviceId].label,
+        priceValue: CATALOG.price(serviceId, s.weightIdx, opts),
+      }));
+      await db.createBookingsForPlan(from, { petId, lines, services: activeIds, weightIdx: s.weightIdx, priceOpts: opts, source: 'whatsapp' });
+    }
+  } catch (err) {
+    console.error('Error guardando en base de datos:', err);
+  }
+}
+
 async function handleTurn(from, incoming, profileName) {
   const s = session.getSession(from);
   if (profileName && !s.ownerName) s.ownerName = profileName;
+  const wasOnboarded = s.onboarded;
+  const hadPlanConfirmedAt = s.planConfirmedAt;
   const outgoing = router.handle(from, s, incoming);
   for (const payload of outgoing) await send(payload);
+  await persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt);
   return outgoing;
 }
 
@@ -111,9 +156,12 @@ app.post('/dev/reset', (req, res) => {
 
 app.get('/dev/sent', (req, res) => res.json(sentLog));
 
+/* ---- API para la app (login por código + datos del cliente) ---- */
+app.use('/api', createApiRouter({ send, textMessage: M.textMessage }));
+
 const scheduler = createReminderScheduler(send);
 app.get('/dev/reminders/pending', (req, res) => res.json({ pending: scheduler.pending() }));
 
 app.listen(PORT, () => {
-  console.log(`ALLPETZ WhatsApp bot escuchando en :${PORT}${DRY_RUN ? '  [DRY_RUN: no se llama a Meta]' : ''}`);
+  console.log(`ALLPETZ WhatsApp bot escuchando en :${PORT}${DRY_RUN ? '  [DRY_RUN: no se llama a Meta]' : ''}${db.enabled ? '' : '  [DB: sin DATABASE_URL, solo memoria]'}`);
 });
