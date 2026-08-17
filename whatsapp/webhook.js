@@ -15,6 +15,7 @@ const router = require('./router.js');
 const { createReminderScheduler } = require('./reminders.js');
 const db = require('./db.js');
 const { createApiRouter } = require('./api.js');
+const { createCollabApiRouter } = require('./collab-api.js');
 const M = require('./messages.js');
 const CATALOG = require('../catalog.js');
 
@@ -163,6 +164,9 @@ app.get('/dev/sent', (req, res) => res.json(sentLog));
 
 /* ---- API para la app (login por código + datos del cliente) ---- */
 app.use('/api', createApiRouter({ send, textMessage: M.textMessage }));
+
+/* ---- API para el panel de colaboradores (disponibilidad + asignación) ---- */
+app.use('/api/collab', createCollabApiRouter({ send, textMessage: M.textMessage }));
 
 const scheduler = createReminderScheduler(send);
 app.get('/dev/reminders/pending', (req, res) => res.json({ pending: scheduler.pending() }));

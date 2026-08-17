@@ -24,8 +24,18 @@ create table if not exists collaborators (
   name text not null,
   phone text,
   specialty text,
+  specialties jsonb not null default '[]', -- array de service_id: "bano","paseo","barf","vacunas","dental"
   active boolean not null default true
 );
+
+create table if not exists collaborator_availability (
+  id uuid primary key default gen_random_uuid(),
+  collaborator_id uuid not null references collaborators(id) on delete cascade,
+  weekday int not null, -- 0 (domingo) .. 6 (sábado)
+  start_time time not null,
+  end_time time not null
+);
+create index if not exists collab_avail_collaborator_idx on collaborator_availability(collaborator_id);
 
 create table if not exists bookings (
   id uuid primary key default gen_random_uuid(),

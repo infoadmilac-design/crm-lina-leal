@@ -131,6 +131,16 @@
   function cop(n) { return '$' + Math.round(n).toLocaleString('es-CO'); }
   function fmt(n) { return n === 0 ? 'Incluido' : cop(n); }
 
+  // ---- Duración estimada por servicio, para calendario de colaboradores ----
+  const SERVICE_DURATION_MIN = { bano: 60, barf: 20, vacunas: 30, dental: 60 };
+
+  /** Minutos estimados que ocupa un servicio en la agenda de un colaborador. */
+  function durationMinutes(serviceId, opts) {
+    opts = opts || {};
+    if (serviceId === 'paseo') return Math.round((PASEO_DURATION[opts.paseoDuration] || PASEO_DURATION.corta).mult * 60);
+    return SERVICE_DURATION_MIN[serviceId] || 30;
+  }
+
   /** Precio de un ítem del armador para un peso dado. weightIdx: 0..3. */
   function price(id, weightIdx, opts) {
     opts = opts || {};
@@ -146,5 +156,6 @@
     PR, BARF, BARF_DEFAULT, BARF_OPTIONS, TIER, WEIGHTS, ROW_META, BUILDER_ROW_IDS, SERVICES, cop, fmt, price,
     BANO_VARIANTS, BANO_VARIANT_ORDER, banoVariantPrice,
     PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD, paseoPrice,
+    SERVICE_DURATION_MIN, durationMinutes,
   };
 });
