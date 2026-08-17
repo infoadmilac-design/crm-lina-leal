@@ -67,8 +67,16 @@ function handle(to, session, incoming) {
       return handleCatalogPaseoModalidad(to, session, incoming);
     case 'catalog_barf_variant':
       return handleCatalogBarfVariant(to, session, incoming);
+    case 'catalog_pick_day':
+      return handleCatalogPickDay(to, session, incoming);
+    case 'catalog_pick_time':
+      return handleCatalogPickTime(to, session, incoming);
     case 'catalog_added':
       return handleCatalogAdded(to, session, incoming);
+    case 'reschedule_pick_day':
+      return handleReschedulePickDay(to, session, incoming);
+    case 'reschedule_pick_time':
+      return handleReschedulePickTime(to, session, incoming);
     case 'plan_weight':
       return handlePlanWeight(to, session, incoming);
     case 'plan_services':
@@ -203,9 +211,76 @@ function finishServiceConfig(to, session, builderId) {
     const { lines, total } = ticketFor(session);
     return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
   }
+  // Vía Catálogo: el cliente propone día y hora para este servicio antes de
+  // seguir — el colaborador solo acepta o rechaza (ver handleCatalogAdded /
+  // whatsapp/collab-api.js para el lado del colaborador).
+  session.pendingSlotService = builderId;
+  session.step = 'catalog_pick_day';
+  return [M.dayPickerList(to)];
+}
+
+function handleCatalogPickDay(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id === 'slotday_skip') {
+    return finishAfterSlot(to, session);
+  }
+  if (incoming.type === 'interactive' && incoming.id.startsWith('slotday_')) {
+    const offset = Number(incoming.id.slice('slotday_'.length));
+    session.pendingSlotDate = M.dateStrForOffset(offset);
+    session.step = 'catalog_pick_time';
+    return [M.timePickerList(to)];
+  }
+  return [M.dayPickerList(to)];
+}
+
+function handleCatalogPickTime(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('slottime_')) {
+    const time = incoming.id.slice('slottime_'.length);
+    const serviceId = session.pendingSlotService;
+    session.proposedSlots = session.proposedSlots || {};
+    session.proposedSlots[serviceId] = `${session.pendingSlotDate}T${time}`;
+    return finishAfterSlot(to, session);
+  }
+  return [M.timePickerList(to)];
+}
+
+function finishAfterSlot(to, session) {
+  const builderId = session.pendingSlotService;
   const meta = CATALOG.ROW_META[builderId];
   session.step = 'catalog_added';
-  return [M.serviceAddedButtons(to, `${meta.emoji} ${meta.label} agregado a tu plan.`)];
+  const slot = session.proposedSlots && session.proposedSlots[builderId];
+  const whenLine = slot ? ` Propusiste ${M.formatSlotLabel(slot)} — el colaborador lo confirma o te propone otro horario.` : '';
+  return [M.serviceAddedButtons(to, `${meta.emoji} ${meta.label} agregado a tu plan.${whenLine}`)];
+}
+
+/* ---- Re-proponer horario cuando el colaborador rechazó el anterior ----
+   Entra directo a estos pasos porque collab-api.js los activa desde fuera
+   del chat (ver whatsapp/collab-api.js::declineProposal). */
+function handleReschedulePickDay(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id === 'slotday_skip') {
+    session.reschedulingBookingId = null;
+    session.step = 'menu';
+    return [M.textMessage(to, 'Sin problema, un colaborador te contacta pronto para cuadrar el horario 🐾'), M.mainMenu(to, session.petName || 'de nuevo')];
+  }
+  if (incoming.type === 'interactive' && incoming.id.startsWith('slotday_')) {
+    const offset = Number(incoming.id.slice('slotday_'.length));
+    session.pendingSlotDate = M.dateStrForOffset(offset);
+    session.step = 'reschedule_pick_time';
+    return [M.timePickerList(to)];
+  }
+  return [M.dayPickerList(to)];
+}
+
+function handleReschedulePickTime(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('slottime_')) {
+    const time = incoming.id.slice('slottime_'.length);
+    session.rescheduleProposedAt = `${session.pendingSlotDate}T${time}`;
+    session.step = 'menu';
+    return [
+      M.textMessage(to, `Listo, le propusimos al colaborador tu nuevo horario: ${M.formatSlotLabel(session.rescheduleProposedAt)}. Te avisamos apenas confirme ✅`),
+      M.mainMenu(to, session.petName || 'de nuevo'),
+    ];
+  }
+  return [M.timePickerList(to)];
 }
 
 function handleCatalogBanoVariant(to, session, incoming) {

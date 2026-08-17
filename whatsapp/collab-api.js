@@ -6,6 +6,8 @@
 
 const express = require('express');
 const db = require('./db.js');
+const session = require('./session.js');
+const M = require('./messages.js');
 const CATALOG = require('../catalog.js');
 
 function ah(fn) {
@@ -34,6 +36,15 @@ function fmtWhen(date) {
 function createCollabApiRouter({ send, textMessage }) {
   const router = express.Router();
   router.use(express.json());
+
+  async function sendServiceConfirmation(target, booking, petName) {
+    const label = (CATALOG.ROW_META[target.service_id] || {}).label || target.service_id;
+    const whenLabel = fmtWhen(new Date(booking.scheduled_at));
+    await send(textMessage(
+      booking.customer_phone,
+      `✅ ¡Tu cita quedó confirmada! ${label}${petName ? ` para ${petName}` : ''}, el ${whenLabel}. Te escribimos antes para recordarte 🐾`
+    ));
+  }
 
   const requireCollaborator = ah(async (req, res, next) => {
     const header = req.headers.authorization || '';
@@ -81,13 +92,7 @@ function createCollabApiRouter({ send, textMessage }) {
     const result = await db.assignBooking(req.params.id, req.collaborator.id, scheduledAt, durationMin);
     if (!result.ok) return res.status(409).json({ error: ASSIGN_ERROR_MESSAGES[result.reason] || result.reason });
 
-    const label = (CATALOG.ROW_META[target.service_id] || {}).label || target.service_id;
-    const whenLabel = fmtWhen(new Date(result.booking.scheduled_at));
-    await send(textMessage(
-      result.booking.customer_phone,
-      `✅ ¡Tu cita quedó confirmada! ${label}${result.petName ? ` para ${result.petName}` : ''}, el ${whenLabel}. Te escribimos antes para recordarte 🐾`
-    ));
-
+    await sendServiceConfirmation(target, result.booking, result.petName);
     res.json({ booking: result.booking });
   }));
 
@@ -95,6 +100,62 @@ function createCollabApiRouter({ send, textMessage }) {
     const result = await db.releaseBooking(req.params.id, req.collaborator.id);
     if (!result.ok) return res.status(404).json({ error: ASSIGN_ERROR_MESSAGES[result.reason] || result.reason });
     res.json({ released: true });
+  }));
+
+  router.get('/proposals', requireCollaborator, ah(async (req, res) => {
+    const rows = await db.listProposals(req.collaborator.specialties || []);
+    res.json({ bookings: rows });
+  }));
+
+  router.post('/bookings/:id/accept', requireCollaborator, ah(async (req, res) => {
+    const proposals = await db.listProposals(req.collaborator.specialties || []);
+    const target = proposals.find((b) => b.id === req.params.id);
+    if (!target) return res.status(404).json({ error: 'esa reserva no está propuesta o no coincide con tu especialidad' });
+    const durationMin = CATALOG.durationMinutes(target.service_id, target.variant || {});
+
+    const result = await db.acceptProposedBooking(req.params.id, req.collaborator.id, durationMin);
+    if (!result.ok) return res.status(409).json({ error: ASSIGN_ERROR_MESSAGES[result.reason] || result.reason });
+
+    await sendServiceConfirmation(target, result.booking, result.petName);
+    res.json({ booking: result.booking });
+  }));
+
+  router.post('/bookings/:id/decline', requireCollaborator, ah(async (req, res) => {
+    const result = await db.declineProposal(req.params.id, req.collaborator.specialties || []);
+    if (!result.ok) return res.status(404).json({ error: ASSIGN_ERROR_MESSAGES[result.reason] || result.reason });
+
+    // El cliente vuelve a elegir día y hora — router.js retoma esto en
+    // 'reschedule_pick_day' cuando responda (ver whatsapp/router.js).
+    const s = session.getSession(result.booking.customer_phone);
+    s.reschedulingBookingId = result.booking.id;
+    s.step = 'reschedule_pick_day';
+    await send(M.textMessage(result.booking.customer_phone, 'El colaborador no pudo con ese horario 😕 ¿Qué otro día te queda bien?'));
+    await send(M.dayPickerList(result.booking.customer_phone));
+
+    res.json({ declined: true });
+  }));
+
+  router.get('/earnings', requireCollaborator, ah(async (req, res) => {
+    const bookings = await db.listCollaboratorBookings(req.collaborator.id);
+    const monthKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }).slice(0, 7); // YYYY-MM
+    const thisMonth = bookings.filter((b) =>
+      b.status === 'confirmado' && b.scheduled_at &&
+      new Date(b.scheduled_at).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }).slice(0, 7) === monthKey
+    );
+    const byService = {};
+    let totalPayout = 0;
+    let totalCommission = 0;
+    for (const b of thisMonth) {
+      const { commission, payout } = CATALOG.splitEarnings(b.price, b.service_id);
+      totalPayout += payout;
+      totalCommission += commission;
+      const key = b.service_id;
+      byService[key] = byService[key] || { serviceId: key, label: (CATALOG.ROW_META[key] || {}).label || key, count: 0, payout: 0, commission: 0 };
+      byService[key].count += 1;
+      byService[key].payout += payout;
+      byService[key].commission += commission;
+    }
+    res.json({ month: monthKey, servicesCount: thisMonth.length, totalPayout, totalCommission, byService: Object.values(byService) });
   }));
 
   return router;

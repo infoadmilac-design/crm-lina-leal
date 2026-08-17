@@ -44,14 +44,18 @@ async function latestPetId(phone) {
   return rows[0]?.id || null;
 }
 
-/** Inserta una reserva por cada servicio activo del plan confirmado. */
+/** Inserta una reserva por cada servicio activo del plan confirmado. Si el
+    cliente propuso horario para un servicio (line.proposedAt, "YYYY-MM-DDTHH:MM"
+    hora de Bogotá), la reserva nace en estado 'propuesto' con ese horario. */
 async function createBookingsForPlan(phone, { petId, lines, services, weightIdx, priceOpts, source }) {
   if (!enabled) return;
   for (const line of lines) {
+    const parsed = line.proposedAt ? parseLocalDateTime(line.proposedAt) : null;
+    const status = parsed ? 'propuesto' : 'agendado';
     await query(
-      `insert into bookings (customer_phone, pet_id, service_id, variant, price, status, source)
-       values ($1, $2, $3, $4, $5, 'agendado', $6)`,
-      [phone, petId, line.serviceId, JSON.stringify({ ...priceOpts, weightIdx, label: line.label }), line.priceValue, source]
+      `insert into bookings (customer_phone, pet_id, service_id, variant, price, status, proposed_at, source)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [phone, petId, line.serviceId, JSON.stringify({ ...priceOpts, weightIdx, label: line.label }), line.priceValue, status, parsed ? parsed.instant : null, source]
     );
   }
 }
@@ -180,7 +184,9 @@ async function replaceAvailability(collaboratorId, slots) {
   }
 }
 
-/** Reservas sin asignar cuyo servicio coincide con alguna de las especialidades dadas. */
+/** Reservas sin horario propuesto ("que ustedes me contacten") cuyo servicio
+    coincide con alguna de las especialidades dadas — respaldo para cuando el
+    cliente no propuso nada; ver listProposals() para las que sí propusieron. */
 async function listPendingBookings(specialties) {
   if (!enabled || !specialties || !specialties.length) return [];
   const { rows } = await query(
@@ -188,8 +194,24 @@ async function listPendingBookings(specialties) {
      from bookings b
      join customers c on c.phone = b.customer_phone
      left join pets p on p.id = b.pet_id
-     where b.assigned_collaborator_id is null and b.service_id = any($1::text[])
+     where b.assigned_collaborator_id is null and b.status = 'agendado' and b.service_id = any($1::text[])
      order by b.created_at`,
+    [specialties]
+  );
+  return rows;
+}
+
+/** Reservas con un horario propuesto por el cliente, esperando que un
+    colaborador con la especialidad correspondiente lo acepte o rechace. */
+async function listProposals(specialties) {
+  if (!enabled || !specialties || !specialties.length) return [];
+  const { rows } = await query(
+    `select b.*, c.owner_name, p.name as pet_name
+     from bookings b
+     join customers c on c.phone = b.customer_phone
+     left join pets p on p.id = b.pet_id
+     where b.status = 'propuesto' and b.service_id = any($1::text[])
+     order by b.proposed_at`,
     [specialties]
   );
   return rows;
@@ -253,6 +275,53 @@ async function assignBooking(bookingId, collaboratorId, scheduledAtLocal, durati
   }
 }
 
+/** Convierte un instante (timestamptz de Postgres, o Date de node-pg) a
+    "YYYY-MM-DDTHH:MM" en hora de Bogotá, sin depender de la zona horaria
+    del proceso de Node — inverso de parseLocalDateTime(). */
+function instantToLocalString(instant) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(instant));
+  const get = (t) => parts.find((p) => p.type === t).value;
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+}
+
+/** El colaborador acepta el horario que el cliente propuso — reutiliza toda
+    la validación de disponibilidad/choque de assignBooking(). */
+async function acceptProposedBooking(bookingId, collaboratorId, durationMin) {
+  if (!enabled) return { ok: false, reason: 'db_disabled' };
+  const { rows } = await query(`select proposed_at from bookings where id = $1 and status = 'propuesto'`, [bookingId]);
+  const proposedAt = rows[0]?.proposed_at;
+  if (!proposedAt) return { ok: false, reason: 'not_found' };
+  return assignBooking(bookingId, collaboratorId, instantToLocalString(proposedAt), durationMin);
+}
+
+/** El colaborador rechaza el horario propuesto: la reserva vuelve a quedar
+    sin horario, lista para que el cliente proponga otro (ver
+    whatsapp/collab-api.js, que dispara el mensaje de WhatsApp con esto). */
+async function declineProposal(bookingId, specialties) {
+  if (!enabled) return { ok: false, reason: 'db_disabled' };
+  const { rows } = await query(
+    `update bookings set proposed_at = null, status = 'agendado'
+     where id = $1 and status = 'propuesto' and service_id = any($2::text[])
+     returning id, customer_phone`,
+    [bookingId, specialties || []]
+  );
+  return rows[0] ? { ok: true, booking: rows[0] } : { ok: false, reason: 'not_found' };
+}
+
+/** Guarda el nuevo horario que el cliente re-propuso tras un rechazo. */
+async function updateProposedTime(bookingId, proposedAtLocal) {
+  if (!enabled) return { ok: false, reason: 'db_disabled' };
+  const parsed = parseLocalDateTime(proposedAtLocal);
+  if (!parsed) return { ok: false, reason: 'invalid_date' };
+  const { rows } = await query(
+    `update bookings set proposed_at = $1::timestamptz, status = 'propuesto' where id = $2 returning id`,
+    [parsed.instant, bookingId]
+  );
+  return rows[0] ? { ok: true } : { ok: false, reason: 'not_found' };
+}
+
 /** Libera una reserva previamente asignada, para que vuelva al pool sin asignar. */
 async function releaseBooking(bookingId, collaboratorId) {
   if (!enabled) return { ok: false, reason: 'db_disabled' };
@@ -279,6 +348,10 @@ module.exports = {
   getAvailability,
   replaceAvailability,
   listPendingBookings,
+  listProposals,
   assignBooking,
+  acceptProposedBooking,
+  declineProposal,
+  updateProposedTime,
   releaseBooking,
 };

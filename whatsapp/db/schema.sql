@@ -44,12 +44,15 @@ create table if not exists bookings (
   service_id text not null,
   variant jsonb not null default '{}',
   price int not null default 0,
-  status text not null default 'agendado',
+  status text not null default 'agendado', -- 'agendado' | 'propuesto' | 'confirmado' | 'cancelado'
   scheduled_at timestamptz,
+  proposed_at timestamptz, -- horario que el cliente propuso, pendiente de que un colaborador lo acepte
   assigned_collaborator_id uuid references collaborators(id) on delete set null,
   source text not null default 'whatsapp',
   created_at timestamptz not null default now()
 );
+
+alter table bookings add column if not exists proposed_at timestamptz;
 
 create index if not exists bookings_customer_phone_idx on bookings(customer_phone);
 create index if not exists bookings_assigned_collaborator_idx on bookings(assigned_collaborator_id);
