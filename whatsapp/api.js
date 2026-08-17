@@ -94,6 +94,13 @@ function createApiRouter({ send, textMessage }) {
     res.json({ bookings: rows });
   }));
 
+  // Pública (sin auth): overrides de comisión/textos que el admin haya guardado,
+  // para que app.js/colaboradores.js calculen los mismos precios que el bot.
+  router.get('/settings', ah(async (req, res) => {
+    const settings = await db.getSettings();
+    res.json(settings);
+  }));
+
   return router;
 }
 

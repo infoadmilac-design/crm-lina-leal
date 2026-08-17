@@ -55,12 +55,26 @@ function buttonMessage(to, { header, body, footer, buttons }) {
 }
 
 /* ---- 0. Onboarding: bienvenida emocional + nombre, peso y raza ---- */
-function welcomeIntro(to) {
-  return textMessage(
-    to,
+/* Textos editables desde el panel de administrador (Configuración > Textos
+   del bot) — solo estos dos, por ser mensajes de texto simple sin botones
+   ni listas (ver el plan: reescribir los demás es más arriesgado). Si no
+   hay override guardado, se usa el texto por defecto de siempre. */
+const DEFAULT_BOT_TEXTS = {
+  welcome:
     '¡Guau, hola! 🐾 Soy la voz (bueno, la patita escritora) de ALLPETZ: el ecosistema que junta en un solo lugar TODO lo que tu mejor amigo de cuatro patas va a necesitar — paseos, baño, comida rica, vacunas, dientes limpios, entrenamiento, transporte, hotel y hasta seguro.\n\n' +
-      'Nada de andar buscando 5 contactos distintos cada vez que se te ocurre algo. En unos minutos armamos el plan perfecto según su tamaño, y listo: tú te olvidas de estar pendiente, porque nosotros te recordamos cada cita a tiempo. Menos preocupaciones para ti, más cariño para tu peludo 🐶✨'
-  );
+    'Nada de andar buscando 5 contactos distintos cada vez que se te ocurre algo. En unos minutos armamos el plan perfecto según su tamaño, y listo: tú te olvidas de estar pendiente, porque nosotros te recordamos cada cita a tiempo. Menos preocupaciones para ti, más cariño para tu peludo 🐶✨',
+  humanHandoff: '🙋 Te conecto con el equipo de ALLPETZ, en un momento te escriben por aquí mismo.',
+};
+const BOT_TEXTS = Object.assign({}, DEFAULT_BOT_TEXTS);
+
+/** Aplica los textos guardados por el admin — mismo patrón que
+    catalog.js::setOverrides(), síncrono/sin red. */
+function setOverrides(overrides) {
+  if (overrides && overrides.botTexts) Object.assign(BOT_TEXTS, overrides.botTexts);
+}
+
+function welcomeIntro(to) {
+  return textMessage(to, BOT_TEXTS.welcome);
 }
 
 function askPetName(to) {
@@ -379,7 +393,7 @@ function bookingActionButtons(to, booking) {
 
 /* ---- handoff a humano ---- */
 function humanHandoff(to) {
-  return textMessage(to, '🙋 Te conecto con el equipo de ALLPETZ, en un momento te escriben por aquí mismo.');
+  return textMessage(to, BOT_TEXTS.humanHandoff);
 }
 
 module.exports = {
@@ -387,6 +401,8 @@ module.exports = {
   imageMessage,
   listMessage,
   buttonMessage,
+  setOverrides,
+  DEFAULT_BOT_TEXTS,
   welcomeIntro,
   askPetName,
   askBreed,

@@ -881,5 +881,17 @@
   /* Init                                                               */
   /* ---------------------------------------------------------------- */
 
+  // Comisión/textos que el admin haya guardado desde su panel — si falla
+  // (offline, backend caído) los precios simplemente usan los valores por
+  // defecto del catálogo, como hasta ahora.
+  api('/settings').then((settings) => CATALOG.setOverrides(settings)).catch(() => {});
+
   render();
+
+  // Si la sesión ya estaba guardada (recarga de página), refresca los
+  // datos del cliente en segundo plano en vez de quedarse solo con el
+  // caché de localStorage.
+  if (state.loggedIn && state.authToken) {
+    api('/me').then(applyMe).then(() => { save(); render(); }).catch(() => { /* sin conexión: se queda con el caché */ });
+  }
 })();

@@ -518,5 +518,15 @@
     }
   });
 
+  // Comisión que el admin haya guardado desde su panel — si falla, se
+  // queda con los valores por defecto del catálogo.
+  api('/settings').then((settings) => CATALOG.setOverrides(settings)).catch(() => {});
+
   render();
+
+  // Si la sesión ya estaba guardada (recarga de página), refresca en
+  // segundo plano en vez de quedarse solo con el caché de localStorage.
+  if (state.loggedIn && state.authToken) {
+    loadAll().catch(() => { /* sin conexión: se queda con el caché */ });
+  }
 })();

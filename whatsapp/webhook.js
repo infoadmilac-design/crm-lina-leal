@@ -16,6 +16,7 @@ const { createReminderScheduler } = require('./reminders.js');
 const db = require('./db.js');
 const { createApiRouter } = require('./api.js');
 const { createCollabApiRouter } = require('./collab-api.js');
+const { createAdminApiRouter } = require('./admin-api.js');
 const M = require('./messages.js');
 const CATALOG = require('../catalog.js');
 
@@ -175,8 +176,18 @@ app.use('/api', createApiRouter({ send, textMessage: M.textMessage }));
 /* ---- API para el panel de colaboradores (disponibilidad + asignación) ---- */
 app.use('/api/collab', createCollabApiRouter({ send, textMessage: M.textMessage }));
 
+/* ---- API para el panel de administrador ---- */
+app.use('/api/admin', createAdminApiRouter());
+
 const scheduler = createReminderScheduler(send);
 app.get('/dev/reminders/pending', (req, res) => res.json({ pending: scheduler.pending() }));
+
+// Comisión/textos que el admin haya guardado (whatsapp/admin-api.js) — se
+// aplican una vez al arrancar; después de eso, admin-api.js los actualiza
+// en caliente en este mismo proceso cada vez que el admin guarda un cambio.
+db.getSettings()
+  .then((settings) => { CATALOG.setOverrides(settings); M.setOverrides(settings); })
+  .catch((err) => console.error('Error cargando configuración:', err));
 
 app.listen(PORT, () => {
   console.log(`ALLPETZ WhatsApp bot escuchando en :${PORT}${DRY_RUN ? '  [DRY_RUN: no se llama a Meta]' : ''}${db.enabled ? '' : '  [DB: sin DATABASE_URL, solo memoria]'}`);

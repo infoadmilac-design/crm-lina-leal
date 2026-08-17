@@ -333,6 +333,190 @@ async function releaseBooking(bookingId, collaboratorId) {
   return rows[0] ? { ok: true } : { ok: false, reason: 'not_found' };
 }
 
+/* ---- Panel de administrador: colaboradores, clientes, reservas globales ---- */
+
+async function getAdminByPhone(phone) {
+  if (!enabled) return null;
+  const { rows } = await query(`select phone, name from admins where phone = $1`, [phone]);
+  return rows[0] || null;
+}
+
+async function listAdminCollaborators() {
+  if (!enabled) return [];
+  const { rows } = await query(`select id, name, phone, specialties, active from collaborators order by name`);
+  return rows;
+}
+
+async function createCollaborator({ name, phone, specialties }) {
+  if (!enabled) return null;
+  const { rows } = await query(
+    `insert into collaborators (name, phone, specialties) values ($1, $2, $3::jsonb)
+     returning id, name, phone, specialties, active`,
+    [name, phone || null, JSON.stringify(specialties || [])]
+  );
+  return rows[0];
+}
+
+/** Actualiza solo los campos presentes en `patch` (undefined = no tocar). */
+async function updateCollaborator(id, { name, phone, specialties, active }) {
+  if (!enabled) return null;
+  const { rows } = await query(
+    `update collaborators set
+       name = coalesce($2, name),
+       phone = coalesce($3, phone),
+       specialties = coalesce($4::jsonb, specialties),
+       active = coalesce($5, active)
+     where id = $1
+     returning id, name, phone, specialties, active`,
+    [id, name ?? null, phone ?? null, specialties ? JSON.stringify(specialties) : null, active === undefined ? null : active]
+  );
+  return rows[0] || null;
+}
+
+/** Lista de clientes para el panel de admin, con búsqueda opcional por teléfono/nombre. */
+async function listCustomersAdmin(search) {
+  if (!enabled) return [];
+  if (search) {
+    const { rows } = await query(
+      `select phone, owner_name, created_at from customers
+       where phone ilike $1 or owner_name ilike $1
+       order by created_at desc limit 100`,
+      [`%${search}%`]
+    );
+    return rows;
+  }
+  const { rows } = await query(`select phone, owner_name, created_at from customers order by created_at desc limit 100`);
+  return rows;
+}
+
+/** Todas las reservas del negocio (no solo las de un colaborador), con filtros opcionales. */
+async function listAllBookings({ status, collaboratorId } = {}) {
+  if (!enabled) return [];
+  const conditions = [];
+  const params = [];
+  if (status) { params.push(status); conditions.push(`b.status = $${params.length}`); }
+  if (collaboratorId) { params.push(collaboratorId); conditions.push(`b.assigned_collaborator_id = $${params.length}`); }
+  const where = conditions.length ? `where ${conditions.join(' and ')}` : '';
+  const { rows } = await query(
+    `select b.*, c.owner_name, p.name as pet_name, col.name as collaborator_name
+     from bookings b
+     join customers c on c.phone = b.customer_phone
+     left join pets p on p.id = b.pet_id
+     left join collaborators col on col.id = b.assigned_collaborator_id
+     ${where}
+     order by b.scheduled_at nulls last, b.created_at desc
+     limit 300`,
+    params
+  );
+  return rows;
+}
+
+/* ---- Configuración editable desde el panel de administrador ---- */
+const SETTINGS_KEY_TO_CAMEL = { commission: 'commission', business_info: 'businessInfo', bot_texts: 'botTexts' };
+
+async function getSettings() {
+  if (!enabled) return {};
+  const { rows } = await query(`select key, value from settings`);
+  const out = {};
+  for (const r of rows) out[SETTINGS_KEY_TO_CAMEL[r.key] || r.key] = r.value;
+  return out;
+}
+
+async function setSetting(key, value) {
+  if (!enabled) return null;
+  const { rows } = await query(
+    `insert into settings (key, value) values ($1, $2::jsonb)
+     on conflict (key) do update set value = excluded.value
+     returning key, value`,
+    [key, JSON.stringify(value)]
+  );
+  return rows[0];
+}
+
+/** Reservas confirmadas con scheduled_at en [fromInstant, toInstant) — base
+    del reporte financiero del admin (whatsapp/admin-api.js hace el cálculo
+    de comisión/utilidad con CATALOG.splitEarnings, aquí solo se traen los
+    datos crudos). */
+async function listBookingsInRange(fromInstant, toInstant, status) {
+  if (!enabled) return [];
+  const conditions = [`b.scheduled_at >= $1::timestamptz`, `b.scheduled_at < $2::timestamptz`];
+  const params = [fromInstant, toInstant];
+  if (status) { params.push(status); conditions.push(`b.status = $${params.length}`); }
+  const { rows } = await query(
+    `select b.*, col.name as collaborator_name
+     from bookings b
+     left join collaborators col on col.id = b.assigned_collaborator_id
+     where ${conditions.join(' and ')}
+     order by b.scheduled_at`,
+    params
+  );
+  return rows;
+}
+
+async function getBookingById(id) {
+  if (!enabled) return null;
+  const { rows } = await query(
+    `select b.*, c.owner_name, p.name as pet_name
+     from bookings b
+     join customers c on c.phone = b.customer_phone
+     left join pets p on p.id = b.pet_id
+     where b.id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+/** El admin mueve una reserva YA agendada a otro colaborador. Sin `force`,
+    valida disponibilidad/choque contra el nuevo colaborador igual que
+    assignBooking(); con `force`, lo salta (el admin asume la responsabilidad). */
+async function reassignBooking(bookingId, newCollaboratorId, durationMin, force) {
+  if (!enabled) return { ok: false, reason: 'db_disabled' };
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const { rows: bookingRows } = await client.query(
+      `select id, scheduled_at from bookings where id = $1 for update`,
+      [bookingId]
+    );
+    const booking = bookingRows[0];
+    if (!booking) { await client.query('rollback'); return { ok: false, reason: 'not_found' }; }
+    if (!booking.scheduled_at) { await client.query('rollback'); return { ok: false, reason: 'not_scheduled' }; }
+
+    if (!force) {
+      const parsed = parseLocalDateTime(instantToLocalString(booking.scheduled_at));
+      const endHHMM = minutesToHHMM(parsed.minutesOfDay + durationMin);
+      const { rows: availRows } = await client.query(
+        `select 1 from collaborator_availability
+         where collaborator_id = $1 and weekday = $2 and start_time <= $3::time and end_time >= $4::time`,
+        [newCollaboratorId, parsed.weekday, `${parsed.hh}:${parsed.mm}`, endHHMM]
+      );
+      if (!availRows[0]) { await client.query('rollback'); return { ok: false, reason: 'outside_availability' }; }
+
+      const { rows: overlapRows } = await client.query(
+        `select 1 from bookings
+         where assigned_collaborator_id = $1 and id <> $2 and scheduled_at is not null
+           and scheduled_at < ($3::timestamptz + ($4 || ' minutes')::interval)
+           and (scheduled_at + (coalesce(nullif(variant->>'durationMin', ''), '60') || ' minutes')::interval) > $3::timestamptz`,
+        [newCollaboratorId, bookingId, booking.scheduled_at, String(durationMin)]
+      );
+      if (overlapRows[0]) { await client.query('rollback'); return { ok: false, reason: 'overlap' }; }
+    }
+
+    const { rows: updated } = await client.query(
+      `update bookings set assigned_collaborator_id = $1 where id = $2
+       returning id, customer_phone, pet_id, service_id, variant, price, status, scheduled_at`,
+      [newCollaboratorId, bookingId]
+    );
+    await client.query('commit');
+    return { ok: true, booking: updated[0] };
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   enabled,
   upsertCustomerAndPet,
@@ -354,4 +538,15 @@ module.exports = {
   declineProposal,
   updateProposedTime,
   releaseBooking,
+  getAdminByPhone,
+  listAdminCollaborators,
+  createCollaborator,
+  updateCollaborator,
+  listCustomersAdmin,
+  listAllBookings,
+  getBookingById,
+  reassignBooking,
+  getSettings,
+  setSetting,
+  listBookingsInRange,
 };

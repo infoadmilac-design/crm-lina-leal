@@ -57,6 +57,16 @@ alter table bookings add column if not exists proposed_at timestamptz;
 create index if not exists bookings_customer_phone_idx on bookings(customer_phone);
 create index if not exists bookings_assigned_collaborator_idx on bookings(assigned_collaborator_id);
 
+create table if not exists admins (
+  phone text primary key,
+  name text not null
+);
+
+create table if not exists settings (
+  key text primary key,
+  value jsonb not null
+);
+
 create table if not exists auth_codes (
   phone text primary key,
   code text not null,
