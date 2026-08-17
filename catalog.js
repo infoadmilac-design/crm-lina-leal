@@ -58,21 +58,25 @@
   // `desc`: una línea corta para la fila del catálogo (máx. 72 caracteres).
   // `pitch`: el texto largo que se muestra al abrir el detalle del servicio,
   // escrito en primera persona — como si la mascota le hablara al dueño.
+  // Fotos reales de ALLPETZ (marca propia), servidas desde GitHub Pages —
+  // reemplazan las de banco de imágenes genéricas que se usaban antes.
+  const SERVICE_IMAGES_BASE = 'https://infoadmilac-design.github.io/crm-lina-leal/images/servicios/';
+
   const SERVICES = [
     { id: 'paseos', emoji: '🐕', title: 'Paseos', desc: 'GPS en vivo y fotos.', bg: '#FF5A40', text: '#0E0E12', map: 'paseo',
-      photo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Girl_walking_dog_001.jpg/960px-Girl_walking_dog_001.jpg',
+      photo: SERVICE_IMAGES_BASE + 'paseos.jpg',
       pitch: '¡Sácame ya! 🐾 Llevo todo el día mirando la puerta y todavía no hemos ido a explorar el barrio. Necesito mis vueltas, oler cada poste y saludar a mis amigos peludos — si no, empiezo a hacer travesuras, ¡tú ya sabes!' },
     { id: 'grooming', emoji: '✂️', title: 'Grooming', desc: 'Baño y corte.', bg: '#D4FF3A', text: '#0E0E12', map: 'bano',
-      photo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Dog_Groomer_Norwich.jpg/960px-Dog_Groomer_Norwich.jpg',
+      photo: SERVICE_IMAGES_BASE + 'grooming.jpg',
       pitch: 'Psss... humano, creo que ya rompí récord de días sin bañarme y hasta las moscas se están quejando 😅. ¿Me consientes con un baño? Prometo salir oliendo tan rico que hasta vas a querer abrazarme más de la cuenta.' },
     { id: 'barf', emoji: '🥩', title: 'BARF', desc: 'Comida natural.', bg: '#BEE3FF', text: '#0E0E12', map: 'barf',
-      photo: null,
+      photo: SERVICE_IMAGES_BASE + 'barf.jpg',
       pitch: 'Esa comida seca de bolsa ya me aburrió 🙄. Yo lo que quiero es carne de verdad, fresca, como mis ancestros lobos (bueno, casi). Dame mi plan BARF y vas a ver cómo brilla mi pelo y salto más alto que nunca.' },
     { id: 'vet', emoji: '🏥', title: 'Vet', desc: 'A domicilio.', bg: '#2540FF', text: '#F4ECDC', map: 'vacunas',
-      photo: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/Dog_being_examined_at_Society_for_the_Prevention_of_Cruelty_to_Animals_Clinic_%28SPCA%29%2C_Wellington.jpg',
+      photo: SERVICE_IMAGES_BASE + 'vet.jpg',
       pitch: 'No me gusta la palabra "inyección", lo sé 💉. Pero prefiero mil veces que el doctor venga a la casa a revisarme en mi propio sofá, a que me lleves a una sala llena de gatos mirándome raro. Cuida mi salud sin el drama del transporte.' },
     { id: 'dental', emoji: '🦷', title: 'Dental', desc: 'Limpieza profesional.', bg: '#C9FFDA', text: '#0E0E12', map: 'dental',
-      photo: 'https://upload.wikimedia.org/wikipedia/commons/7/74/Vet-cleaning-dog-teeth.jpg',
+      photo: SERVICE_IMAGES_BASE + 'dental.jpg',
       pitch: 'Huele mi aliento... ¿ya? 😬 Exacto. Necesito una limpiadita profesional antes de que me prohíbas darte besos. Dientes sanos, aliento fresco, más besos para ti — trato justo, ¿no crees?' },
     { id: 'entrenamiento', emoji: '🎓', title: 'Entrenamiento', desc: 'Adiestramiento.', bg: '#FFD0C7', text: '#0E0E12', map: null,
       photo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Military_working_dog%2C_obedience_training%2C_Davis-Monthan_Air_Force_Base.jpg/960px-Military_working_dog%2C_obedience_training%2C_Davis-Monthan_Air_Force_Base.jpg',
