@@ -156,6 +156,15 @@
     return { commission, payout: price - commission };
   }
 
+  /** Aplica valores editables desde el panel de administrador (comisión por
+      ahora) sobre los mapas fijos de este módulo — muta en memoria, sigue
+      siendo síncrono/sin red, así que router.js (que requiere catalog.js
+      sin poder hacer I/O) no se ve afectado. Se llama una vez al arrancar
+      el servidor y cada vez que el admin guarda un cambio (ver webhook.js). */
+  function setOverrides(overrides) {
+    if (overrides && overrides.commission) Object.assign(COMMISSION_PCT, overrides.commission);
+  }
+
   /** Precio de un ítem del armador para un peso dado. weightIdx: 0..3. */
   function price(id, weightIdx, opts) {
     opts = opts || {};
@@ -173,5 +182,6 @@
     PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD, paseoPrice,
     SERVICE_DURATION_MIN, durationMinutes,
     COMMISSION_PCT, splitEarnings,
+    setOverrides,
   };
 });

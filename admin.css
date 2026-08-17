@@ -1,0 +1,11 @@
+/* Panel de administrador — se apoya en colaboradores.css (login, shell,
+   tabs, card, item) y agrega solo lo específico de este panel. */
+
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.kpi { border: 1.5px solid #E4D9C1; border-radius: 14px; padding: 12px 14px; background: #fff; }
+.kpi-num { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; margin-top: 4px; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.chip { display: flex; align-items: center; gap: 6px; border: 1.5px solid #E4D9C1; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; background: #fff; width: auto; }
+
+.item select { border: var(--border); border-radius: 10px; padding: 8px 10px; font-size: 13px; background: #fff; }
