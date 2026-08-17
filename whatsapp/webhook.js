@@ -70,7 +70,7 @@ function normalizeIncoming(message) {
 /** Guarda en la base de datos los dos momentos de negocio que le importan al
     resto del sistema (app + colaboradores) — el motor de conversación
     (router.js) sigue siendo puro y no sabe nada de esto. */
-async function persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt) {
+async function persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt, hadRescheduleProposedAt) {
   if (!db.enabled) return;
   try {
     if (!wasOnboarded && s.onboarded) {
@@ -95,8 +95,14 @@ async function persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt) 
         serviceId,
         label: CATALOG.ROW_META[serviceId].label,
         priceValue: CATALOG.price(serviceId, s.weightIdx, opts),
+        proposedAt: (s.proposedSlots && s.proposedSlots[serviceId]) || null,
       }));
       await db.createBookingsForPlan(from, { petId, lines, services: activeIds, weightIdx: s.weightIdx, priceOpts: opts, source: 'whatsapp' });
+    }
+    if (!hadRescheduleProposedAt && s.rescheduleProposedAt) {
+      await db.updateProposedTime(s.reschedulingBookingId, s.rescheduleProposedAt);
+      s.reschedulingBookingId = null;
+      s.rescheduleProposedAt = null;
     }
   } catch (err) {
     console.error('Error guardando en base de datos:', err);
@@ -108,9 +114,10 @@ async function handleTurn(from, incoming, profileName) {
   if (profileName && !s.ownerName) s.ownerName = profileName;
   const wasOnboarded = s.onboarded;
   const hadPlanConfirmedAt = s.planConfirmedAt;
+  const hadRescheduleProposedAt = s.rescheduleProposedAt;
   const outgoing = router.handle(from, s, incoming);
   for (const payload of outgoing) await send(payload);
-  await persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt);
+  await persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt, hadRescheduleProposedAt);
   return outgoing;
 }
 

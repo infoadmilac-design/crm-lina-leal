@@ -66,7 +66,14 @@ assert.equal(s.step, 'catalog_paseo_modalidad');
 
 out = step(to, s, { type: 'interactive', id: 'paseomod_juego' }, 'elige paseo + juego');
 assert.equal(s.paseoModalidad, 'juego');
-assert.equal(s.step, 'catalog_added', 'tras configurar, debe ofrecer agregar otro o ver resumen');
+assert.equal(s.step, 'catalog_pick_day', 'tras configurar, debe pedir que el cliente proponga día y hora');
+
+out = step(to, s, { type: 'interactive', id: 'slotday_1' }, 'elige el día (mañana)');
+assert.equal(s.step, 'catalog_pick_time');
+
+out = step(to, s, { type: 'interactive', id: 'slottime_10:00' }, 'elige la hora (10:00 am)');
+assert.ok(s.proposedSlots.paseo, 'debe quedar guardado el horario propuesto para el paseo');
+assert.equal(s.step, 'catalog_added', 'tras proponer horario, debe ofrecer agregar otro o ver resumen');
 
 out = step(to, s, { type: 'interactive', id: 'catalog_add_another' }, 'agrega otro servicio');
 assert.equal(s.step, 'catalog');
@@ -81,7 +88,11 @@ assert.equal(s.step, 'catalog_bano_notes', 'debe pedir notas para el corte');
 
 out = step(to, s, { type: 'text', text: 'corte bajo, sin motas en las orejas' }, 'escribe notas del corte');
 assert.equal(s.banoNotes, 'corte bajo, sin motas en las orejas');
+assert.equal(s.step, 'catalog_pick_day', 'también debe pedir horario para el baño');
+
+out = step(to, s, { type: 'interactive', id: 'slotday_skip' }, 'omite proponer horario ("que ustedes me contacten")');
 assert.equal(s.step, 'catalog_added');
+assert.ok(!s.proposedSlots.bano, 'no debe quedar horario propuesto para el baño');
 
 out = step(to, s, { type: 'interactive', id: 'catalog_view_summary' }, 've el resumen del plan');
 assert.equal(s.step, 'plan_summary');

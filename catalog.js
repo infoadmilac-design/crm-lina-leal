@@ -141,6 +141,17 @@
     return SERVICE_DURATION_MIN[serviceId] || 30;
   }
 
+  // ---- Comisión de ALLPETZ por servicio (placeholder 20% en los cinco,
+  // ajustar cuando el dueño dé los números reales de cada servicio) ----
+  const COMMISSION_PCT = { bano: 0.20, paseo: 0.20, barf: 0.20, vacunas: 0.20, dental: 0.20 };
+
+  /** Reparte el precio de una reserva entre la utilidad del colaborador y la comisión de ALLPETZ. */
+  function splitEarnings(price, serviceId) {
+    const pct = COMMISSION_PCT[serviceId] != null ? COMMISSION_PCT[serviceId] : 0.20;
+    const commission = Math.round(price * pct);
+    return { commission, payout: price - commission };
+  }
+
   /** Precio de un ítem del armador para un peso dado. weightIdx: 0..3. */
   function price(id, weightIdx, opts) {
     opts = opts || {};
@@ -157,5 +168,6 @@
     BANO_VARIANTS, BANO_VARIANT_ORDER, banoVariantPrice,
     PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD, paseoPrice,
     SERVICE_DURATION_MIN, durationMinutes,
+    COMMISSION_PCT, splitEarnings,
   };
 });

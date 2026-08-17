@@ -26,11 +26,13 @@
       authStep: 'phone', // 'phone' | 'code'
       authPhone: '',
       authToken: null,
-      activeTab: 'disponibilidad',
+      activeTab: 'propuestas',
       collaborator: null,
       availability: [],
       pending: [],
+      proposals: [],
       bookings: [],
+      earnings: null,
     };
   }
 
@@ -77,8 +79,12 @@
       bookings: me.bookings,
     });
     try {
-      const p = await api('/collab/pending');
-      setState({ pending: p.bookings });
+      const [p, props, earnings] = await Promise.all([
+        api('/collab/pending'),
+        api('/collab/proposals'),
+        api('/collab/earnings'),
+      ]);
+      setState({ pending: p.bookings, proposals: props.bookings, earnings });
     } catch (e) { /* si falla, se queda con lo que había */ }
   }
 
@@ -122,9 +128,11 @@
 
   function renderTabs() {
     const tabs = [
-      ['disponibilidad', 'Mi disponibilidad'],
-      ['pendientes', `Solicitudes pendientes${state.pending.length ? ` (${state.pending.length})` : ''}`],
+      ['propuestas', `Propuestas${state.proposals.length ? ` (${state.proposals.length})` : ''}`],
+      ['pendientes', `Sin horario${state.pending.length ? ` (${state.pending.length})` : ''}`],
       ['calendario', 'Mi calendario'],
+      ['ingresos', 'Mis ingresos'],
+      ['disponibilidad', 'Mi disponibilidad'],
     ];
     return `<div class="tabs">${tabs.map(([id, label]) => `
       <button class="tab ${state.activeTab === id ? 'active' : ''}" data-action="set-tab" data-val="${id}">${esc(label)}</button>
@@ -160,8 +168,10 @@
   function serviceLabel(id) { return (CATALOG.ROW_META[id] || {}).label || id; }
 
   function renderPendientes() {
-    if (!state.pending.length) return `<div class="card"><div class="empty">No hay solicitudes pendientes que coincidan con tu especialidad.</div></div>`;
-    return `<div class="card"><h2>Solicitudes pendientes</h2>${state.pending.map((b) => `
+    if (!state.pending.length) return `<div class="card"><div class="empty">No hay solicitudes sin horario que coincidan con tu especialidad.</div></div>`;
+    return `<div class="card"><h2>Solicitudes sin horario</h2>
+      <p class="empty" style="padding-top:0;margin-bottom:10px;">El cliente pidió que ustedes lo contacten — asígnale tú un horario.</p>
+      ${state.pending.map((b) => `
       <div class="item" data-booking="${b.id}">
         <div class="row">
           <div>
@@ -177,6 +187,62 @@
         </div>
       </div>
     `).join('')}</div>`;
+  }
+
+  function fmtProposed(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function renderPropuestas() {
+    if (!state.proposals.length) return `<div class="card"><div class="empty">No hay horarios propuestos por clientes todavía.</div></div>`;
+    return `<div class="card"><h2>Propuestas de horario</h2>
+      <p class="empty" style="padding-top:0;margin-bottom:10px;">El cliente eligió este horario. Acéptalo si te queda bien, o recházalo para que proponga otro.</p>
+      ${state.proposals.map((b) => `
+      <div class="item" data-booking="${b.id}">
+        <div class="row">
+          <div>
+            <div class="title">${esc(serviceLabel(b.service_id))}${b.pet_name ? ` · ${esc(b.pet_name)}` : ''}</div>
+            <div class="sub">${esc(b.owner_name || b.customer_phone)} · ${esc(b.customer_phone)}</div>
+            <div class="sub">📅 ${esc(fmtProposed(b.proposed_at))}</div>
+          </div>
+          <div class="price">${CATALOG.cop(b.price)}</div>
+        </div>
+        <div class="actions">
+          <button class="btn small" data-action="accept-proposal" data-id="${b.id}">Aceptar</button>
+          <button class="btn small secondary" data-action="decline-proposal" data-id="${b.id}">Rechazar</button>
+        </div>
+      </div>
+    `).join('')}</div>`;
+  }
+
+  function renderIngresos() {
+    const e = state.earnings;
+    if (!e) return `<div class="card"><div class="empty">Cargando...</div></div>`;
+    return `
+    <div class="card">
+      <h2>Mis ingresos de este mes</h2>
+      <div class="row" style="gap:24px;flex-wrap:wrap;">
+        <div><div class="mono">Servicios realizados</div><div class="title" style="font-size:22px;">${e.servicesCount}</div></div>
+        <div><div class="mono">Tu utilidad</div><div class="title" style="font-size:22px;">${CATALOG.cop(e.totalPayout)}</div></div>
+        <div><div class="mono">Comisión ALLPETZ</div><div class="title" style="font-size:22px;">${CATALOG.cop(e.totalCommission)}</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Por servicio</h2>
+      ${!e.byService.length ? `<div class="empty">Todavía no tienes servicios confirmados este mes.</div>` : e.byService.map((s) => `
+        <div class="item">
+          <div class="row">
+            <div>
+              <div class="title">${esc(s.label)}</div>
+              <div class="sub">${s.count} servicio${s.count === 1 ? '' : 's'} · comisión ALLPETZ ${CATALOG.cop(s.commission)}</div>
+            </div>
+            <div class="price">${CATALOG.cop(s.payout)}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
   }
 
   function renderCalendario() {
@@ -212,6 +278,8 @@
   function renderShell() {
     const view = state.activeTab === 'pendientes' ? renderPendientes()
       : state.activeTab === 'calendario' ? renderCalendario()
+      : state.activeTab === 'ingresos' ? renderIngresos()
+      : state.activeTab === 'propuestas' ? renderPropuestas()
       : renderDisponibilidad();
     return `
     <div class="shell">
@@ -278,6 +346,26 @@
       try {
         await api(`/collab/bookings/${id}/assign`, { method: 'POST', body: JSON.stringify({ scheduledAt: `${date}T${time}` }) });
         showToast('Cita asignada y cliente notificado por WhatsApp ✅');
+        await loadAll();
+      } catch (err) { showToast(err.message); }
+      return;
+    }
+
+    if (action === 'accept-proposal') {
+      const id = t.getAttribute('data-id');
+      try {
+        await api(`/collab/bookings/${id}/accept`, { method: 'POST' });
+        showToast('Cita confirmada y cliente notificado por WhatsApp ✅');
+        await loadAll();
+      } catch (err) { showToast(err.message); }
+      return;
+    }
+
+    if (action === 'decline-proposal') {
+      const id = t.getAttribute('data-id');
+      try {
+        await api(`/collab/bookings/${id}/decline`, { method: 'POST' });
+        showToast('Rechazada — le pedimos al cliente que proponga otro horario.');
         await loadAll();
       } catch (err) { showToast(err.message); }
       return;

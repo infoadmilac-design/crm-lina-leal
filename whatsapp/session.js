@@ -23,6 +23,12 @@ function defaultSession() {
     paseoModalidad: null,
     barfKey: 'pollo-250',
     services: {},
+    // Negociación de horario cliente↔colaborador (ver router.js)
+    proposedSlots: {}, // { [serviceId]: "YYYY-MM-DDTHH:MM" }
+    pendingSlotService: null,
+    pendingSlotDate: null,
+    reschedulingBookingId: null,
+    rescheduleProposedAt: null,
     bookings: [
       { id: 'b1', icon: '✂️', title: 'Grooming pro', when: 'Hoy · 4:00 pm', status: 'confirmado' },
       { id: 'b2', icon: '🐕', title: 'Paseo matinal', when: 'Mañana · 7:00 am', status: 'agendado' },

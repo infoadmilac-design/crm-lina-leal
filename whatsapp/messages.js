@@ -260,6 +260,61 @@ function barfOptionsList(to) {
   });
 }
 
+/* ---- elegir horario: día (próximos 7, hora de Bogotá) + franja fija ----
+   router.js es puro/síncrono y no puede consultar la agenda real de los
+   colaboradores; el cliente propone día+hora "a ciegas" y la validación de
+   choque/disponibilidad ocurre cuando el colaborador acepta (ver
+   whatsapp/db.js::assignBooking). */
+const WD_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MO_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const TIME_SLOTS = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00'];
+
+function bogotaTodayStr() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+}
+function addDaysStr(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function dateStrForOffset(offset) { return addDaysStr(bogotaTodayStr(), offset); }
+function dayLabel(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  return `${WD_SHORT[d.getUTCDay()]} ${d.getUTCDate()} ${MO_SHORT[d.getUTCMonth()]}`;
+}
+function timeLabel(t) {
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h < 12 ? 'am' : 'pm';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+/** "YYYY-MM-DDTHH:MM" -> "Lun 18 ago, 10:00 am" (para mensajes de confirmación). */
+function formatSlotLabel(iso) {
+  const [datePart, timePart] = String(iso || '').split('T');
+  if (!datePart || !timePart) return '';
+  return `${dayLabel(datePart)}, ${timeLabel(timePart)}`;
+}
+
+function dayPickerList(to) {
+  const rows = [{ id: 'slotday_skip', title: 'Que ustedes me contacten', description: 'Un colaborador te propone el horario' }];
+  for (let i = 0; i < 6; i++) {
+    rows.push({ id: `slotday_${i}`, title: dayLabel(dateStrForOffset(i)), description: i === 0 ? 'Hoy' : '' });
+  }
+  return listMessage(to, {
+    body: '📅 ¿Qué día te gustaría agendar tu cita?',
+    buttonLabel: 'Elegir día',
+    sections: [{ title: 'Próximos días', rows }],
+  });
+}
+
+function timePickerList(to) {
+  return listMessage(to, {
+    body: '⏰ ¿A qué hora te queda mejor?',
+    buttonLabel: 'Elegir hora',
+    sections: [{ title: 'Horario', rows: TIME_SLOTS.map((t) => ({ id: `slottime_${t}`, title: timeLabel(t), description: '' })) }],
+  });
+}
+
 /* ---- tras configurar un servicio: seguir agregando o ver resumen ---- */
 function serviceAddedButtons(to, summaryLine) {
   return buttonMessage(to, {
@@ -347,6 +402,10 @@ module.exports = {
   paseoDurationButtons,
   paseoModalidadButtons,
   barfOptionsList,
+  dateStrForOffset,
+  formatSlotLabel,
+  dayPickerList,
+  timePickerList,
   serviceAddedButtons,
   ticketSummary,
   planConfirmed,
