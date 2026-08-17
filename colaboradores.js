@@ -33,6 +33,8 @@
       proposals: [],
       bookings: [],
       earnings: null,
+      calendarMonthOffset: 0,
+      calendarSelectedDate: null, // "YYYY-MM-DD"
     };
   }
 
@@ -58,6 +60,28 @@
 
   const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // lunes..domingo, aunque se guarda 0=domingo
   const WEEKDAY_LABEL = { 0: 'Domingo', 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado' };
+  const WD_MINI = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const MONTH_LABEL = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  function bogotaTodayKey() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }
+  /** Metadatos del mes a mostrar (offset 0 = mes actual, hora de Bogotá). */
+  function monthMeta(offset) {
+    const [ty, tm] = bogotaTodayKey().split('-').map(Number);
+    let year = ty, month = tm - 1 + offset; // month: 0-11
+    year += Math.floor(month / 12);
+    month = ((month % 12) + 12) % 12;
+    const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay(); // 0=domingo
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    return { year, month, firstWeekday, daysInMonth, label: `${MONTH_LABEL[month]} ${year}` };
+  }
+  function dateKey(year, month, day) {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  function weekdayOf(dateStr) {
+    return new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+  }
 
   let toastTimer = null;
   function showToast(text) {
@@ -246,33 +270,93 @@
   }
 
   function renderCalendario() {
-    const scheduled = state.bookings.filter((b) => b.scheduled_at);
-    if (!scheduled.length) return `<div class="card"><div class="empty">Todavía no tienes citas confirmadas.</div></div>`;
-    const byDay = {};
-    scheduled.forEach((b) => {
-      const d = new Date(b.scheduled_at);
-      const key = d.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
-      (byDay[key] = byDay[key] || []).push(b);
+    const meta = monthMeta(state.calendarMonthOffset);
+    const todayKey = bogotaTodayKey();
+
+    // Citas por día (hora de Bogotá).
+    const bookingsByDate = {};
+    state.bookings.filter((b) => b.scheduled_at).forEach((b) => {
+      const key = new Date(b.scheduled_at).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      (bookingsByDate[key] = bookingsByDate[key] || []).push(b);
     });
-    return `<div class="card"><h2>Mi calendario</h2>${Object.keys(byDay).map((day) => `
-      <div class="day-group">
-        <h3>${esc(day)}</h3>
-        ${byDay[day].map((b) => {
-          const time = new Date(b.scheduled_at).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' });
-          return `
-          <div class="item">
-            <div class="row">
-              <div>
-                <div class="title">${time} · ${esc(serviceLabel(b.service_id))}${b.pet_name ? ` · ${esc(b.pet_name)}` : ''}</div>
-                <div class="sub">${esc(b.owner_name || b.customer_phone)}</div>
-              </div>
-              <div class="price">${CATALOG.cop(b.price)}</div>
-            </div>
-            <div class="actions"><button class="btn small secondary" data-action="release-booking" data-id="${b.id}">Liberar</button></div>
-          </div>`;
-        }).join('')}
+
+    // Disponibilidad que TÚ declaraste, por día de la semana.
+    const availByWeekday = {};
+    state.availability.forEach((s) => { availByWeekday[s.weekday] = s; });
+
+    const leadBlanks = meta.firstWeekday; // celdas vacías antes del día 1
+    const totalCells = Math.ceil((leadBlanks + meta.daysInMonth) / 7) * 7;
+
+    let cells = '';
+    for (let i = 0; i < totalCells; i++) {
+      const day = i - leadBlanks + 1;
+      if (day < 1 || day > meta.daysInMonth) { cells += `<div class="cal-cell empty"></div>`; continue; }
+      const key = dateKey(meta.year, meta.month, day);
+      const wd = weekdayOf(key);
+      const avail = availByWeekday[wd];
+      const dayBookings = bookingsByDate[key] || [];
+      const isToday = key === todayKey;
+      const isSelected = key === state.calendarSelectedDate;
+      cells += `
+        <button class="cal-cell ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}" data-action="select-day" data-date="${key}">
+          <span class="cal-daynum">${day}</span>
+          ${avail ? `<span class="cal-avail">${esc(avail.start_time)}–${esc(avail.end_time)}</span>` : `<span class="cal-avail off">Sin horario</span>`}
+          ${dayBookings.length ? `<span class="cal-badge">${dayBookings.length} cita${dayBookings.length === 1 ? '' : 's'}</span>` : ''}
+        </button>`;
+    }
+
+    const selectedKey = state.calendarSelectedDate;
+    const selectedBookings = selectedKey ? (bookingsByDate[selectedKey] || []) : [];
+    const selectedAvail = selectedKey ? availByWeekday[weekdayOf(selectedKey)] : null;
+
+    return `
+    <div class="card">
+      <div class="cal-header">
+        <button class="btn small secondary" data-action="cal-prev">‹</button>
+        <h2 style="margin:0;text-transform:capitalize;">${esc(meta.label)}</h2>
+        <button class="btn small secondary" data-action="cal-next">›</button>
       </div>
-    `).join('')}</div>`;
+      <div class="cal-grid">
+        ${WD_MINI.map((w) => `<div class="cal-weekday">${w}</div>`).join('')}
+        ${cells}
+      </div>
+    </div>
+    ${selectedKey ? `
+    <div class="card">
+      <h2>${esc(dayLongLabel(selectedKey))}</h2>
+      <p class="empty" style="padding-top:0;margin-bottom:10px;">
+        ${selectedAvail
+          ? `🕘 Tu disponibilidad ese día: <strong>${esc(selectedAvail.start_time)} – ${esc(selectedAvail.end_time)}</strong> (la definiste tú en "Mi disponibilidad").`
+          : `🕘 No marcaste disponibilidad para los ${esc(WEEKDAY_LABEL[weekdayOf(selectedKey)])} — puedes agregarla en "Mi disponibilidad".`}
+      </p>
+      ${!selectedBookings.length ? `<div class="empty">Sin citas agendadas este día.</div>` : selectedBookings.map((b) => {
+        const time = new Date(b.scheduled_at).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' });
+        return `
+        <div class="item">
+          <div class="row">
+            <div>
+              <div class="title">${time} · ${esc(serviceLabel(b.service_id))}${b.pet_name ? ` · ${esc(b.pet_name)}` : ''}</div>
+              <div class="sub">${esc(b.owner_name || b.customer_phone)}</div>
+            </div>
+            <div class="price">${CATALOG.cop(b.price)}</div>
+          </div>
+          <div class="actions"><button class="btn small secondary" data-action="release-booking" data-id="${b.id}">Liberar</button></div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}`;
+  }
+
+  function dayLongLabel(dateStr) {
+    return new Date(`${dateStr}T12:00:00Z`).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
+  }
+
+  function renderEarningsMini() {
+    const e = state.earnings;
+    return `
+    <button class="earnings-mini" data-action="set-tab" data-val="ingresos" title="Ver detalle en Mis ingresos">
+      <span class="mono">Utilidad del mes</span>
+      <span class="earnings-mini-amount">${e ? CATALOG.cop(e.totalPayout) : '—'}</span>
+    </button>`;
   }
 
   function renderShell() {
@@ -288,7 +372,10 @@
           <h1 class="heading">ALLPETZ · Colaboradores</h1>
           <div class="who">${esc(state.collaborator ? state.collaborator.name : '')}</div>
         </div>
-        <button class="btn small secondary" data-action="logout">Salir</button>
+        <div class="topbar-right">
+          ${renderEarningsMini()}
+          <button class="btn small secondary" data-action="logout">Salir</button>
+        </div>
       </div>
       ${renderTabs()}
       ${view}
@@ -368,6 +455,15 @@
         showToast('Rechazada — le pedimos al cliente que proponga otro horario.');
         await loadAll();
       } catch (err) { showToast(err.message); }
+      return;
+    }
+
+    if (action === 'cal-prev') { setState({ calendarMonthOffset: state.calendarMonthOffset - 1, calendarSelectedDate: null }); return; }
+    if (action === 'cal-next') { setState({ calendarMonthOffset: state.calendarMonthOffset + 1, calendarSelectedDate: null }); return; }
+
+    if (action === 'select-day') {
+      const date = t.getAttribute('data-date');
+      setState({ calendarSelectedDate: state.calendarSelectedDate === date ? null : date });
       return;
     }
 
