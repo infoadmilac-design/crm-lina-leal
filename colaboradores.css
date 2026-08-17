@@ -1,0 +1,86 @@
+:root {
+  --bg: #EBE0CB;
+  --surface: #F4ECDC;
+  --card: #FFFCF6;
+  --ink: #0E0E12;
+  --muted: #6B6B72;
+  --blue: #2540FF;
+  --orange: #FF5A40;
+  --lime: #D4FF3A;
+  --sky: #BEE3FF;
+  --pink: #FFD0C7;
+  --red: #E03B3B;
+  --border: 1.5px solid var(--ink);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+}
+
+a { color: var(--blue); text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+input, select { font-family: inherit; }
+
+.heading { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
+.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ---- Login ---- */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.login-card { width: 100%; max-width: 380px; background: var(--card); border: var(--border); border-radius: 24px; padding: 32px 28px; }
+.login-card h1 { font-size: 24px; margin: 0 0 6px; }
+.login-card p { color: var(--muted); font-size: 14px; margin: 0 0 20px; line-height: 1.5; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--muted); }
+.field input { width: 100%; padding: 12px 14px; border: var(--border); border-radius: 12px; font-size: 15px; background: #fff; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: var(--border); border-radius: 12px; padding: 12px 18px; font-weight: 700; font-size: 14px; background: var(--ink); color: var(--surface); width: 100%; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.secondary { background: transparent; color: var(--ink); }
+.btn.small { width: auto; padding: 8px 14px; font-size: 13px; }
+.link-btn { background: none; border: none; color: var(--blue); font-size: 13px; font-weight: 600; margin-top: 12px; width: 100%; }
+
+/* ---- Shell ---- */
+.shell { max-width: 920px; margin: 0 auto; padding: 24px 20px 60px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.topbar h1 { font-size: 22px; margin: 0; }
+.topbar .who { font-size: 13px; color: var(--muted); }
+.tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+.tab { border: var(--border); border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 700; background: var(--surface); }
+.tab.active { background: var(--ink); color: var(--surface); }
+
+.card { background: var(--card); border: var(--border); border-radius: 20px; padding: 20px; margin-bottom: 16px; }
+.card h2 { font-size: 16px; margin: 0 0 14px; }
+.empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+
+/* ---- Disponibilidad ---- */
+.avail-row { display: grid; grid-template-columns: 130px 1fr auto auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #E4D9C1; }
+.avail-row:last-child { border-bottom: none; }
+.avail-row label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+.avail-row input[type=time] { border: var(--border); border-radius: 10px; padding: 6px 8px; font-size: 13px; background: #fff; }
+.avail-row .to { color: var(--muted); font-size: 12px; text-align: center; }
+
+/* ---- Listas ---- */
+.item { border: var(--border); border-radius: 16px; padding: 14px 16px; margin-bottom: 12px; background: #fff; }
+.item .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.item .title { font-weight: 700; font-size: 15px; }
+.item .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.item .price { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.item .actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+.item .actions input[type=date], .item .actions input[type=time] { border: var(--border); border-radius: 10px; padding: 8px 10px; font-size: 13px; background: #fff; }
+
+.day-group { margin-bottom: 18px; }
+.day-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
+
+/* ---- Toast ---- */
+.toast-root { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 999; }
+.toast { background: var(--ink); color: var(--surface); padding: 12px 18px; border-radius: 12px; font-size: 13px; font-weight: 600; animation: toastIn 0.2s ease-out; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 560px) {
+  .avail-row { grid-template-columns: 1fr; row-gap: 6px; }
+}
