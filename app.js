@@ -51,7 +51,10 @@
       activeTab: 'home',
       weightIdx: 0,
       paseoVar: 'mes',
+      banoFreq: 1,
       barfKey: 'pollo-250',
+      barfEntregas: 1,
+      dentalFreq: 'trimestral',
       services: { bano: true, paseo: true, barf: true, vacunas: true, dental: true },
       petIdx: 0,
       pets: [],
@@ -116,10 +119,13 @@
     // (ver catalog.js) para que el precio calculado sea el mismo en ambos lados.
     return {
       banoVariant: 'general',
+      banoFreq: state.banoFreq,
       paseoFreq: state.paseoVar === 'sem' ? 1 : 5,
       paseoDuration: 'corta',
       paseoModalidad: 'solo',
       barfKey: state.barfKey,
+      barfEntregas: state.barfEntregas,
+      dentalFreq: state.dentalFreq,
     };
   }
   function price(id) {
@@ -129,13 +135,15 @@
   function computeTicketLines() {
     return activeRowIds().map(id => {
       let label = ROW_META[id].label;
-      if (id === 'paseo') label += state.paseoVar === 'sem' ? ' (1×)' : ' (5×)';
-      if (id === 'barf') label += ' · ' + (BARF_OPTIONS.find(o => o.val === state.barfKey) || {}).label;
+      if (id === 'bano') label += ` (${state.banoFreq}×/mes)`;
+      if (id === 'paseo') label += state.paseoVar === 'sem' ? ' (1×/sem)' : ' (5×/sem)';
+      if (id === 'barf') label += ' · ' + (BARF_OPTIONS.find(o => o.val === state.barfKey) || {}).label + (state.barfEntregas === 2 ? ' · 2 entregas' : '');
+      if (id === 'dental') label += ` (${CATALOG.DENTAL_FREQ_OPTIONS[state.dentalFreq].label})`;
       return { label, price: fmt(price(id)) };
     });
   }
   function computeTotal() { return activeRowIds().reduce((sum, id) => sum + price(id), 0); }
-  function selectionKey() { return JSON.stringify({ w: state.weightIdx, pv: state.paseoVar, bk: state.barfKey, sv: state.services }); }
+  function selectionKey() { return JSON.stringify({ w: state.weightIdx, pv: state.paseoVar, bf: state.banoFreq, bk: state.barfKey, be: state.barfEntregas, df: state.dentalFreq, sv: state.services }); }
   function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 9); }
 
   /** Reemplaza mascotas/reservas de ejemplo por los datos reales que devuelve
@@ -390,6 +398,22 @@
             <div class="variant-row">
               <button class="chip-btn ${state.paseoVar === 'sem' ? 'active' : ''}" data-action="set-paseo-variant" data-val="sem">1×/sem</button>
               <button class="chip-btn ${state.paseoVar === 'mes' ? 'active' : ''}" data-action="set-paseo-variant" data-val="mes">5×/sem</button>
+            </div>` : ''}
+            ${row.id === 'bano' ? `
+            <div class="variant-row">
+              <button class="chip-btn ${state.banoFreq === 1 ? 'active' : ''}" data-action="set-bano-freq" data-val="1">1×/mes</button>
+              <button class="chip-btn ${state.banoFreq === 2 ? 'active' : ''}" data-action="set-bano-freq" data-val="2">2×/mes</button>
+            </div>` : ''}
+            ${row.id === 'dental' ? `
+            <div class="variant-row">
+              <button class="chip-btn ${state.dentalFreq === 'mensual' ? 'active' : ''}" data-action="set-dental-freq" data-val="mensual">Mensual</button>
+              <button class="chip-btn ${state.dentalFreq === 'trimestral' ? 'active' : ''}" data-action="set-dental-freq" data-val="trimestral">Cada 3 meses</button>
+              <button class="chip-btn ${state.dentalFreq === 'semestral' ? 'active' : ''}" data-action="set-dental-freq" data-val="semestral">Cada 6 meses</button>
+            </div>` : ''}
+            ${row.id === 'barf' ? `
+            <div class="variant-row">
+              <button class="chip-btn ${state.barfEntregas === 1 ? 'active' : ''}" data-action="set-barf-entregas" data-val="1">1 entrega</button>
+              <button class="chip-btn ${state.barfEntregas === 2 ? 'active' : ''}" data-action="set-barf-entregas" data-val="2">2 entregas</button>
             </div>` : ''}
           </div>`;
         }).join('')}
@@ -754,8 +778,17 @@
       case 'set-paseo-variant':
         setState({ paseoVar: t.getAttribute('data-val') });
         break;
+      case 'set-bano-freq':
+        setState({ banoFreq: Number(t.getAttribute('data-val')) });
+        break;
+      case 'set-dental-freq':
+        setState({ dentalFreq: t.getAttribute('data-val') });
+        break;
       case 'set-barf-key':
         setState({ barfKey: t.getAttribute('data-val') });
+        break;
+      case 'set-barf-entregas':
+        setState({ barfEntregas: Number(t.getAttribute('data-val')) });
         break;
       case 'confirm-plan': {
         const lines = computeTicketLines();

@@ -36,8 +36,9 @@ assert.equal(s.step, 'onboarding_breed');
 out = step(to, s, { type: 'text', text: 'Labrador' }, 'da la raza');
 assert.equal(s.petBreed, 'Labrador');
 assert.equal(s.onboarded, true, 'el onboarding debe quedar completo');
-assert.equal(s.step, 'menu');
-assert.ok(out[0].interactive.body.text.includes('Firulais'), 'el menú debe saludar con el nombre de la mascota');
+assert.equal(s.step, 'packages', 'apenas termina el onboarding debe ofrecer los 3 paquetes');
+assert.ok(out[0].interactive.body.text.includes('Firulais'), 'la oferta de paquetes debe saludar con el nombre de la mascota');
+assert.equal(out[0].interactive.action.sections[0].rows.length, 4, 'debe mostrar 3 paquetes + armar plan propio');
 
 // Un "hola" luego de onboarded debe ir directo al menú, no repetir onboarding.
 out = step(to, s, { type: 'text', text: 'hola' }, 'saluda de nuevo, ya onboarded');
@@ -149,4 +150,30 @@ out = step(to, s, { type: 'interactive', id: firstBookingId }, 'abre el primer s
 out = step(to, s, { type: 'interactive', id: `booking_confirm_${s.bookings[0].id}` }, 'confirma ese servicio (o llega vía plantilla de recordatorio)');
 assert.equal(s.bookings[0].status, 'confirmado');
 
-console.log('\n✅ Todas las verificaciones pasaron — el nuevo flujo (onboarding + catálogo configurando cada servicio al vuelo) funciona de punta a punta.');
+// ---- Paquetes inteligentes: elegir uno arma el plan completo de una sola vez ----
+const CATALOG = require('../catalog.js');
+const to2 = '573001112244';
+const s2 = session.resetSession(to2);
+step(to2, s2, { type: 'text', text: 'hola' }, '[paquetes] primer contacto');
+step(to2, s2, { type: 'text', text: 'Rocky' }, '[paquetes] da el nombre');
+step(to2, s2, { type: 'interactive', id: 'weight_1' }, '[paquetes] elige peso Pequeño');
+out = step(to2, s2, { type: 'text', text: 'omitir' }, '[paquetes] omite raza');
+assert.equal(s2.step, 'packages', 'debe ofrecer los paquetes apenas termina el onboarding');
+
+out = step(to2, s2, { type: 'interactive', id: 'pkg_activo' }, '[paquetes] elige el paquete Activo');
+assert.equal(s2.step, 'plan_summary', 'elegir un paquete debe ir directo al resumen');
+assert.equal(s2.services.paseo, true);
+assert.equal(s2.services.bano, true);
+assert.equal(s2.services.barf, true);
+assert.equal(s2.services.vacunas, undefined, 'Activo no incluye vacunas');
+assert.equal(s2.paseoFreq, 5);
+assert.equal(s2.banoVariant, 'corte');
+assert.equal(s2.banoFreq, 2);
+const expectedTotal = CATALOG.packageTotal('activo', s2.weightIdx);
+assert.ok(out[1].interactive.body.text.includes(CATALOG.cop(expectedTotal)), 'el total del resumen debe coincidir con CATALOG.packageTotal("activo")');
+
+out = step(to2, s2, { type: 'interactive', id: 'plan_confirm' }, '[paquetes] confirma el plan del paquete');
+assert.equal(s2.step, 'menu');
+assert.ok(s2.planConfirmedAt, 'el plan armado por paquete también debe quedar confirmado');
+
+console.log('\n✅ Todas las verificaciones pasaron — el nuevo flujo (onboarding + paquetes inteligentes + catálogo configurando cada servicio al vuelo) funciona de punta a punta.');

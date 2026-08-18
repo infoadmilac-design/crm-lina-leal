@@ -25,6 +25,7 @@ function defaultSession() {
     barfKey: 'pollo-250',
     barfEntregas: null,
     dentalFreq: null,
+    packageDiscountPct: null,
     services: {},
     // Negociación de horario cliente↔colaborador (ver router.js)
     proposedSlots: {}, // { [serviceId]: "YYYY-MM-DDTHH:MM" }
@@ -51,6 +52,23 @@ function resetSession(phone) {
 
 function activeServiceIds(session) {
   return CATALOG.BUILDER_ROW_IDS.filter((id) => session.services[id]);
+}
+
+/** Aplica un paquete inteligente completo a la sesión: activa sus servicios
+    y copia las opciones de precio del paquete (mismas claves que
+    priceOpts(), por eso el Object.assign directo funciona). */
+function applyPackage(session, packageId) {
+  const pkg = CATALOG.PACKAGES[packageId];
+  if (!pkg) return false;
+  const opts = pkg.opts(session.weightIdx);
+  session.services = {};
+  pkg.servicesList.forEach((id) => { session.services[id] = true; });
+  Object.assign(session, opts);
+  // El descuento de paquete se mantiene mientras el plan siga siendo
+  // exactamente el del paquete — cualquier reconfiguración manual lo borra
+  // (ver startServiceConfig / handlePlanServices en router.js).
+  session.packageDiscountPct = pkg.bundleDiscount || 0;
+  return true;
 }
 
 function priceOpts(session) {
@@ -93,8 +111,10 @@ function ticketFor(session) {
     const p = CATALOG.price(id, session.weightIdx, opts);
     return { label, price: CATALOG.fmt(p) };
   });
-  const total = activeServiceIds(session).reduce((sum, id) => sum + CATALOG.price(id, session.weightIdx, opts), 0);
+  const rawTotal = activeServiceIds(session).reduce((sum, id) => sum + CATALOG.price(id, session.weightIdx, opts), 0);
+  const discount = session.packageDiscountPct || 0;
+  const total = discount ? CATALOG.round500(rawTotal * (1 - discount)) : rawTotal;
   return { lines, total };
 }
 
-module.exports = { getSession, resetSession, activeServiceIds, ticketFor, priceOpts };
+module.exports = { getSession, resetSession, activeServiceIds, ticketFor, priceOpts, applyPackage };
