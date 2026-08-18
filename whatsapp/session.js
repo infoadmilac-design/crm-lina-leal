@@ -53,6 +53,19 @@ function activeServiceIds(session) {
   return CATALOG.BUILDER_ROW_IDS.filter((id) => session.services[id]);
 }
 
+/** Aplica un paquete inteligente completo a la sesión: activa sus servicios
+    y copia las opciones de precio del paquete (mismas claves que
+    priceOpts(), por eso el Object.assign directo funciona). */
+function applyPackage(session, packageId) {
+  const pkg = CATALOG.PACKAGES[packageId];
+  if (!pkg) return false;
+  const opts = pkg.opts(session.weightIdx);
+  session.services = {};
+  pkg.servicesList.forEach((id) => { session.services[id] = true; });
+  Object.assign(session, opts);
+  return true;
+}
+
 function priceOpts(session) {
   return {
     banoVariant: session.banoVariant,
@@ -97,4 +110,4 @@ function ticketFor(session) {
   return { lines, total };
 }
 
-module.exports = { getSession, resetSession, activeServiceIds, ticketFor, priceOpts };
+module.exports = { getSession, resetSession, activeServiceIds, ticketFor, priceOpts, applyPackage };

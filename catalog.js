@@ -260,6 +260,59 @@
     return 0;
   }
 
+  // ---- Paquetes inteligentes: 3 combos pensados con anclaje + efecto
+  // señuelo (ver "Estrategia de Paquetes ALLPETZ") — se muestran en ese
+  // orden (el más caro primero) para que "Activo" se vea generoso al lado.
+  // `opts(weightIdx)` genera exactamente las mismas claves que
+  // session.js::priceOpts(), así se pueden aplicar a una sesión con un solo
+  // Object.assign. ----
+  function barfKeyFor(weightIdx, protein) {
+    const base = BARF_DEFAULT[weightIdx] || 'pollo-500';
+    return protein === 'salmon' ? base.replace('pollo', 'salmon') : base;
+  }
+
+  const PACKAGES = {
+    esencial: {
+      id: 'esencial', label: 'Esencial', badge: 'Básico',
+      tagline: 'Para empezar sin comprometerse a mucho.',
+      servicesList: ['paseo', 'bano'],
+      opts: (weightIdx) => ({
+        paseoFreq: 3, paseoDuration: 'corta', paseoModalidad: 'solo',
+        banoVariant: 'general', banoFreq: 1,
+      }),
+    },
+    activo: {
+      id: 'activo', label: 'Activo', badge: '⭐ Recomendado',
+      tagline: 'Lo que la mayoría de perros necesita.',
+      servicesList: ['paseo', 'bano', 'barf'],
+      opts: (weightIdx) => ({
+        paseoFreq: 5, paseoDuration: 'corta', paseoModalidad: 'solo',
+        banoVariant: 'corte', banoFreq: 2,
+        barfKey: barfKeyFor(weightIdx, 'pollo'), barfEntregas: 1,
+      }),
+    },
+    fullcare: {
+      id: 'fullcare', label: 'Full Care', badge: 'El más completo',
+      tagline: 'Para el dueño que no quiere pensar en nada.',
+      servicesList: ['paseo', 'bano', 'barf', 'vacunas', 'dental'],
+      opts: (weightIdx) => ({
+        paseoFreq: 7, paseoDuration: 'corta', paseoModalidad: 'solo',
+        banoVariant: 'corte_raza', banoFreq: 2,
+        barfKey: barfKeyFor(weightIdx, 'salmon'), barfEntregas: 2,
+        dentalFreq: 'trimestral',
+      }),
+    },
+  };
+  // Ancla cara primero, recomendado al medio, básico al final.
+  const PACKAGE_ORDER = ['fullcare', 'activo', 'esencial'];
+
+  function packageTotal(packageId, weightIdx) {
+    const pkg = PACKAGES[packageId];
+    if (!pkg) return 0;
+    const opts = pkg.opts(weightIdx);
+    return pkg.servicesList.reduce((sum, id) => sum + price(id, weightIdx, opts), 0);
+  }
+
   return {
     PR, BARF, BARF_DEFAULT, BARF_OPTIONS, BARF_ENTREGA_FEE_STATE, TIER, WEIGHTS, ROW_META, BUILDER_ROW_IDS, SERVICES, cop, fmt, price,
     BANO_VARIANTS, BANO_VARIANT_ORDER, BANO_FREQ_OPTIONS, BANO_FREQ_MULT, banoVariantPrice, banoVisitPrice,
@@ -267,6 +320,7 @@
     DENTAL_FREQ_OPTIONS, DENTAL_FREQ_ORDER, dentalPrice,
     SERVICE_DURATION_MIN, durationMinutes,
     COMMISSION_PCT, splitEarnings, priceBreakdown, transporteFor, CONFIG,
+    PACKAGES, PACKAGE_ORDER, packageTotal,
     setOverrides,
   };
 });

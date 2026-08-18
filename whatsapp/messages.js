@@ -200,6 +200,26 @@ const BANO_ROW_LABEL = {
   corte_raza: 'Corte según raza',
 };
 
+/* ---- Paquetes inteligentes (se ofrecen apenas se conoce la mascota) ---- */
+function packagesList(to, petName, weightIdx) {
+  const rows = CATALOG.PACKAGE_ORDER.map((id) => {
+    const pkg = CATALOG.PACKAGES[id];
+    const total = CATALOG.packageTotal(id, weightIdx);
+    return { id: `pkg_${id}`, title: pkg.label, description: `${fmt(total)}/mes · ${pkg.badge}`.slice(0, 72) };
+  });
+  rows.push({ id: 'pkg_custom', title: 'Arma tu propio plan', description: 'Elige y combina servicio por servicio' });
+  return listMessage(to, {
+    body: `¡Hola${petName ? ' ' + petName : ''}! 🐾 Armé 3 planes según su tamaño — elige el que más te guste, o arma el tuyo.`,
+    buttonLabel: 'Ver planes',
+    sections: [{ title: 'Planes sugeridos', rows }],
+  });
+}
+
+function packageAppliedIntro(to, packageId) {
+  const pkg = CATALOG.PACKAGES[packageId];
+  return textMessage(to, `¡Buena elección! 🐾 Así quedó el plan ${pkg.label}:`);
+}
+
 function banoVariantList(to, weightIdx) {
   return listMessage(to, {
     body: '🛁 Baño: ¿qué tipo de servicio quieres?',
@@ -449,6 +469,8 @@ module.exports = {
   catalogDetail,
   weightPicker,
   servicesChecklist,
+  packagesList,
+  packageAppliedIntro,
   banoVariantList,
   banoFrequencyButtons,
   banoNotesPrompt,

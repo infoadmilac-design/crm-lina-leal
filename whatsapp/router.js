@@ -6,7 +6,7 @@
 
 const CATALOG = require('../catalog.js');
 const M = require('./messages.js');
-const { ticketFor } = require('./session.js');
+const { ticketFor, applyPackage } = require('./session.js');
 
 const GREETING_RE = /^(hola|hi|menu|inicio|buenas)/i;
 // Steps donde cualquier texto se captura como dato (nombre, raza, notas),
@@ -51,6 +51,8 @@ function handle(to, session, incoming) {
       return handleOnboardingBreed(to, session, incoming);
     case 'menu':
       return handleMenu(to, session, incoming);
+    case 'packages':
+      return handlePackages(to, session, incoming);
     case 'catalog':
       return handleCatalog(to, session, incoming);
     case 'catalog_detail':
@@ -130,10 +132,30 @@ function handleOnboardingBreed(to, session, incoming) {
     const t = incoming.text.trim();
     session.petBreed = /^omitir$/i.test(t) ? null : t;
     session.onboarded = true;
-    session.step = 'menu';
-    return [M.mainMenu(to, session.petName)];
+    session.step = 'packages';
+    return [M.packagesList(to, session.petName, session.weightIdx)];
   }
   return [M.askBreed(to, session.petName)];
+}
+
+/* ---- Paquetes inteligentes: se ofrecen apenas se conoce la mascota (peso),
+   tanto la primera vez (fin del onboarding) como cada vez que el cliente
+   entra a "Arma tu plan" desde el menú. ---- */
+function handlePackages(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('pkg_')) {
+    const pkgId = incoming.id.slice('pkg_'.length);
+    if (pkgId === 'custom') {
+      session.returnTo = 'bulk';
+      session.step = 'plan_services';
+      return [M.servicesChecklist(to, session.weightIdx, session.services)];
+    }
+    if (applyPackage(session, pkgId)) {
+      session.step = 'plan_summary';
+      const { lines, total } = ticketFor(session);
+      return [M.packageAppliedIntro(to, pkgId), M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
+    }
+  }
+  return [M.packagesList(to, session.petName, session.weightIdx)];
 }
 
 /* ---- menú y catálogo ---- */
@@ -144,12 +166,8 @@ function handleMenu(to, session, incoming) {
       session.step = 'catalog';
       return [M.catalogIntro(to), M.catalogList(to)];
     case 'menu_plan':
-      if (session.onboarded) {
-        session.step = 'plan_services';
-        return [M.servicesChecklist(to, session.weightIdx, session.services)];
-      }
-      session.step = 'plan_weight';
-      return [M.weightPicker(to)];
+      session.step = 'packages';
+      return [M.packagesList(to, session.petName, session.weightIdx)];
     case 'menu_servicios':
       session.step = 'servicios';
       return [M.upcomingList(to, session.bookings)];
