@@ -63,8 +63,10 @@ function handle(to, session, incoming) {
       return handleCatalogBanoFreq(to, session, incoming);
     case 'catalog_bano_notes':
       return handleCatalogBanoNotes(to, session, incoming);
-    case 'catalog_paseo_freq':
-      return handleCatalogPaseoFreq(to, session, incoming);
+    case 'catalog_paseo_days':
+      return handleCatalogPaseoDays(to, session, incoming);
+    case 'catalog_paseo_franja':
+      return handleCatalogPaseoFranja(to, session, incoming);
     case 'catalog_paseo_duration':
       return handleCatalogPaseoDuration(to, session, incoming);
     case 'catalog_paseo_modalidad':
@@ -104,7 +106,7 @@ function handle(to, session, incoming) {
 /* ---- 0. Onboarding ---- */
 function startOnboarding(to, session) {
   session.step = 'onboarding_petname';
-  return [M.welcomeIntro(to), M.askPetName(to)];
+  return [M.welcomePhoto(to), M.welcomeIntro(to), M.askPetName(to)];
 }
 
 function handleOnboardingPetName(to, session, incoming) {
@@ -150,9 +152,11 @@ function handlePackages(to, session, incoming) {
       return [M.servicesChecklist(to, session)];
     }
     if (applyPackage(session, pkgId)) {
-      session.step = 'plan_summary';
-      const { lines, total } = ticketFor(session);
-      return [M.packageAppliedIntro(to, pkgId), M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
+      // Un paquete fija qué y cuánto, pero el cliente siempre elige cuándo —
+      // antes del resumen se agenda cada servicio (paseo: días + franja;
+      // los demás: día y hora), sin tocar el precio ya cerrado del paquete.
+      session.returnTo = 'bulk';
+      return [M.packageAppliedIntro(to, pkgId), ...advanceBulkSchedule(to, session, null)];
     }
   }
   return [M.packagesList(to, session.petName, session.weightIdx)];
@@ -218,8 +222,13 @@ function startServiceConfig(to, session, builderId) {
     return [M.banoVariantList(to, session.weightIdx)];
   }
   if (builderId === 'paseo') {
-    session.step = 'catalog_paseo_freq';
-    return [M.paseoFrequencyList(to, session.weightIdx)];
+    // Arranca en blanco: si venía de un paquete o de una vuelta anterior de
+    // edición, esos días ya no aplican a esta configuración nueva.
+    session.paseoScheduleOnly = false;
+    session.paseoDays = [];
+    session.paseoFranja = null;
+    session.step = 'catalog_paseo_days';
+    return [M.paseoDaysChecklist(to, session)];
   }
   if (builderId === 'barf') {
     session.step = 'catalog_barf_variant';
@@ -234,6 +243,18 @@ function startServiceConfig(to, session, builderId) {
 }
 
 function finishServiceConfig(to, session, builderId) {
+  // Paseo ya eligió sus propios días y franja como parte de su configuración
+  // (ver handleCatalogPaseoFranja) — no vuelve a pasar por el selector de
+  // día/hora genérico, que es para citas puntuales de un solo servicio.
+  if (builderId === 'paseo') {
+    // Esto solo se alcanza cuando paseo pasó por su configuración COMPLETA
+    // (catálogo o armador por lotes) — el camino "solo agendar" de un
+    // paquete nunca llega aquí, sale directo desde handleCatalogPaseoFranja.
+    const notice = [M.paseoScheduleNotice(to, session)];
+    if (session.returnTo === 'bulk') return [...notice, ...advanceBulkConfig(to, session, 'paseo')];
+    session.step = 'catalog_added';
+    return [...notice, M.serviceAddedButtons(to, `${CATALOG.ROW_META.paseo.emoji} Paseos agregado a tu plan.`)];
+  }
   if (session.returnTo === 'bulk') {
     return advanceBulkConfig(to, session, builderId);
   }
@@ -246,9 +267,6 @@ function finishServiceConfig(to, session, builderId) {
 }
 
 function handleCatalogPickDay(to, session, incoming) {
-  if (incoming.type === 'interactive' && incoming.id === 'slotday_skip') {
-    return finishAfterSlot(to, session);
-  }
   if (incoming.type === 'interactive' && incoming.id.startsWith('slotday_')) {
     const offset = Number(incoming.id.slice('slotday_'.length));
     session.pendingSlotDate = M.dateStrForOffset(offset);
@@ -272,10 +290,13 @@ function handleCatalogPickTime(to, session, incoming) {
 function finishAfterSlot(to, session) {
   const builderId = session.pendingSlotService;
   const meta = CATALOG.ROW_META[builderId];
-  session.step = 'catalog_added';
   const slot = session.proposedSlots && session.proposedSlots[builderId];
-  const whenLine = slot ? ` Propusiste ${M.formatSlotLabel(slot)} — el colaborador lo confirma o te propone otro horario.` : '';
-  return [M.serviceAddedButtons(to, `${meta.emoji} ${meta.label} agregado a tu plan.${whenLine}`)];
+  const notice = slot ? [M.slotProposedNotice(to, meta.label, M.formatSlotLabel(slot))] : [];
+  if (session.returnTo === 'bulk') {
+    return [...notice, ...advanceBulkSchedule(to, session, builderId)];
+  }
+  session.step = 'catalog_added';
+  return [...notice, M.serviceAddedButtons(to, `${meta.emoji} ${meta.label} agregado a tu plan.`)];
 }
 
 /* ---- Re-proponer horario cuando el colaborador rechazó el anterior ----
@@ -336,13 +357,39 @@ function handleCatalogBanoNotes(to, session, incoming) {
   return [M.banoNotesPrompt(to)];
 }
 
-function handleCatalogPaseoFreq(to, session, incoming) {
-  if (incoming.type === 'interactive' && incoming.id.startsWith('paseofreq_')) {
-    session.paseoFreq = Number(incoming.id.slice('paseofreq_'.length));
+function handleCatalogPaseoDays(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('paseoday_')) {
+    const rest = incoming.id.slice('paseoday_'.length);
+    if (rest === 'continue') {
+      if (!session.paseoDays || !session.paseoDays.length) return [M.paseoDaysChecklist(to, session)];
+      // Fuera de un paquete, los días elegidos SON la frecuencia (más días,
+      // menos por paseo). Dentro de un paquete la frecuencia ya viene fija
+      // y esto es solo para saber cuáles días prefiere — no toca el precio.
+      if (!session.paseoScheduleOnly) session.paseoFreq = session.paseoDays.length;
+      session.step = 'catalog_paseo_franja';
+      return [M.paseoFranjaButtons(to)];
+    }
+    const dayIdx = Number(rest);
+    session.paseoDays = session.paseoDays || [];
+    const pos = session.paseoDays.indexOf(dayIdx);
+    if (pos >= 0) session.paseoDays.splice(pos, 1); else session.paseoDays.push(dayIdx);
+    return [M.paseoDaysChecklist(to, session)];
+  }
+  return [M.paseoDaysChecklist(to, session)];
+}
+
+function handleCatalogPaseoFranja(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('paseofranja_')) {
+    session.paseoFranja = incoming.id.slice('paseofranja_'.length);
+    session.paseoScheduleDone = true;
+    if (session.paseoScheduleOnly) {
+      session.paseoScheduleOnly = false;
+      return [M.paseoScheduleNotice(to, session), ...advanceBulkSchedule(to, session, 'paseo')];
+    }
     session.step = 'catalog_paseo_duration';
     return [M.paseoDurationButtons(to)];
   }
-  return [M.paseoFrequencyList(to, session.weightIdx)];
+  return [M.paseoFranjaButtons(to)];
 }
 
 function handleCatalogPaseoDuration(to, session, incoming) {
@@ -444,6 +491,37 @@ function advanceBulkConfig(to, session, justConfiguredId) {
   for (let i = startIdx; i < BULK_CONFIG_ORDER.length; i++) {
     const id = BULK_CONFIG_ORDER[i];
     if (session.services[id]) return startServiceConfig(to, session, id);
+  }
+  // Ya se sabe QUÉ lleva el plan — ahora falta que el cliente diga CUÁNDO
+  // quiere cada servicio, uno por uno, antes de ver el resumen.
+  return advanceBulkSchedule(to, session, null);
+}
+
+function startPaseoSchedule(to, session) {
+  session.paseoScheduleOnly = true;
+  session.step = 'catalog_paseo_days';
+  return [M.paseoDaysChecklist(to, session)];
+}
+
+// Servicios de visita puntual que agendan día y hora en esta fase — paseo
+// no está aquí porque ya eligió sus propios días/franja (ver arriba).
+const BULK_SCHEDULE_ORDER = ['bano', 'barf', 'vacunas', 'dental'];
+
+/** El cliente SIEMPRE elige cuándo, sin excepción — recorre paseo (días +
+    franja) y luego cada servicio puntual activo (día + hora), uno a la vez,
+    y solo al terminar todos muestra el resumen. */
+function advanceBulkSchedule(to, session, justDoneId) {
+  if (session.services.paseo && !session.paseoScheduleDone && justDoneId !== 'paseo') {
+    return startPaseoSchedule(to, session);
+  }
+  const startIdx = justDoneId && BULK_SCHEDULE_ORDER.includes(justDoneId) ? BULK_SCHEDULE_ORDER.indexOf(justDoneId) + 1 : 0;
+  for (let i = startIdx; i < BULK_SCHEDULE_ORDER.length; i++) {
+    const id = BULK_SCHEDULE_ORDER[i];
+    if (session.services[id]) {
+      session.pendingSlotService = id;
+      session.step = 'catalog_pick_day';
+      return [M.dayPickerList(to)];
+    }
   }
   session.step = 'plan_summary';
   const { lines, total } = ticketFor(session);

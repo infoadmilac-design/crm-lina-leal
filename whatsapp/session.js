@@ -7,6 +7,11 @@ const CATALOG = require('../catalog.js');
 
 const store = new Map();
 
+// Lun..Dom, en el orden en que se muestran los toggles de días de paseo.
+const DAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const DAY_NAMES_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const FRANJA_LABEL = { manana: 'Mañana', tarde: 'Tarde' };
+
 function defaultSession() {
   return {
     step: 'menu',
@@ -20,6 +25,10 @@ function defaultSession() {
     banoFreq: null,
     banoNotes: null,
     paseoFreq: null,
+    paseoDays: [], // índices 0..6 (Lun..Dom) que el cliente eligió para pasear
+    paseoFranja: null, // 'manana' | 'tarde'
+    paseoScheduleOnly: false, // true mientras se piden días/franja sin tocar precio (viene de un paquete)
+    paseoScheduleDone: false,
     paseoDuration: null,
     paseoModalidad: null,
     barfKey: 'pollo-250',
@@ -68,6 +77,13 @@ function applyPackage(session, packageId) {
   // exactamente el del paquete — cualquier reconfiguración manual lo borra
   // (ver startServiceConfig / handlePlanServices en router.js).
   session.packageDiscountPct = pkg.bundleDiscount || 0;
+  // Un paquete fija QUÉ y CUÁNTO, pero nunca CUÁNDO — el cliente siempre
+  // elige los días y la franja de los paseos aparte (ver advanceBulkSchedule
+  // en router.js), sin que eso afecte el precio ni el descuento.
+  session.paseoDays = [];
+  session.paseoFranja = null;
+  session.paseoScheduleDone = false;
+  session.proposedSlots = {};
   return true;
 }
 
@@ -78,6 +94,12 @@ function priceOpts(session) {
     paseoFreq: session.paseoFreq,
     paseoDuration: session.paseoDuration,
     paseoModalidad: session.paseoModalidad,
+    // paseoDays/paseoFranja no afectan el precio (CATALOG.price los ignora),
+    // pero SÍ hay que guardarlos — es la única constancia de qué días y
+    // franja pidió el cliente, ya que el paseo no usa proposedSlots (es
+    // recurrente, no una cita puntual).
+    paseoDays: session.paseoDays,
+    paseoFranja: session.paseoFranja,
     barfKey: session.barfKey,
     barfEntregas: session.barfEntregas,
     dentalFreq: session.dentalFreq,
@@ -94,11 +116,14 @@ function ticketFor(session) {
       label += ` (${session.banoFreq || 1}×/mes)`;
     }
     if (id === 'paseo' && session.paseoFreq) {
-      const freqLabel = `${session.paseoFreq}×/semana`;
+      const freqLabel = (session.paseoDays && session.paseoDays.length)
+        ? session.paseoDays.slice().sort((a, b) => a - b).map((d) => DAY_NAMES_SHORT[d]).join('/')
+        : `${session.paseoFreq}×/semana`;
       const durLabel = CATALOG.PASEO_DURATION[session.paseoDuration || 'corta'].label;
       const MODALIDAD_SHORT = { juego: '+juego', grupal: 'grupal' };
       const modLabel = MODALIDAD_SHORT[session.paseoModalidad] ? ' · ' + MODALIDAD_SHORT[session.paseoModalidad] : '';
-      label += ` (${freqLabel} · ${durLabel}${modLabel})`;
+      const franjaLabel = session.paseoFranja ? ` · ${FRANJA_LABEL[session.paseoFranja]}` : '';
+      label += ` (${freqLabel} · ${durLabel}${modLabel}${franjaLabel})`;
     }
     if (id === 'barf') {
       const opt = CATALOG.BARF_OPTIONS.find((o) => o.val === session.barfKey);
@@ -117,4 +142,7 @@ function ticketFor(session) {
   return { lines, total };
 }
 
-module.exports = { getSession, resetSession, activeServiceIds, ticketFor, priceOpts, applyPackage };
+module.exports = {
+  getSession, resetSession, activeServiceIds, ticketFor, priceOpts, applyPackage,
+  DAY_NAMES, DAY_NAMES_SHORT, FRANJA_LABEL,
+};
