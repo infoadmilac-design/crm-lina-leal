@@ -57,6 +57,8 @@ function handle(to, session, incoming) {
       return handleCatalogDetail(to, session, incoming);
     case 'catalog_bano_variant':
       return handleCatalogBanoVariant(to, session, incoming);
+    case 'catalog_bano_freq':
+      return handleCatalogBanoFreq(to, session, incoming);
     case 'catalog_bano_notes':
       return handleCatalogBanoNotes(to, session, incoming);
     case 'catalog_paseo_freq':
@@ -67,6 +69,10 @@ function handle(to, session, incoming) {
       return handleCatalogPaseoModalidad(to, session, incoming);
     case 'catalog_barf_variant':
       return handleCatalogBarfVariant(to, session, incoming);
+    case 'catalog_barf_entrega':
+      return handleCatalogBarfEntrega(to, session, incoming);
+    case 'catalog_dental_freq':
+      return handleCatalogDentalFreq(to, session, incoming);
     case 'catalog_pick_day':
       return handleCatalogPickDay(to, session, incoming);
     case 'catalog_pick_time':
@@ -198,7 +204,11 @@ function startServiceConfig(to, session, builderId) {
     session.step = 'catalog_barf_variant';
     return [M.barfOptionsList(to)];
   }
-  // vacunas / dental: sin variantes, se agregan directo.
+  if (builderId === 'dental') {
+    session.step = 'catalog_dental_freq';
+    return [M.dentalFrequencyButtons(to, session.weightIdx)];
+  }
+  // vacunas: es anual, sin variantes ni frecuencia que elegir — se agrega directo.
   return finishServiceConfig(to, session, builderId);
 }
 
@@ -286,10 +296,19 @@ function handleReschedulePickTime(to, session, incoming) {
 function handleCatalogBanoVariant(to, session, incoming) {
   if (incoming.type === 'interactive' && incoming.id.startsWith('bano_')) {
     session.banoVariant = incoming.id.slice('bano_'.length);
+    session.step = 'catalog_bano_freq';
+    return [M.banoFrequencyButtons(to, session.weightIdx, session.banoVariant)];
+  }
+  return [M.banoVariantList(to, session.weightIdx)];
+}
+
+function handleCatalogBanoFreq(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('banofreq_')) {
+    session.banoFreq = Number(incoming.id.slice('banofreq_'.length));
     session.step = 'catalog_bano_notes';
     return [M.banoNotesPrompt(to)];
   }
-  return [M.banoVariantList(to, session.weightIdx)];
+  return [M.banoFrequencyButtons(to, session.weightIdx, session.banoVariant)];
 }
 
 function handleCatalogBanoNotes(to, session, incoming) {
@@ -330,9 +349,26 @@ function handleCatalogPaseoModalidad(to, session, incoming) {
 function handleCatalogBarfVariant(to, session, incoming) {
   if (incoming.type === 'interactive' && incoming.id.startsWith('barf_')) {
     session.barfKey = incoming.id.slice('barf_'.length);
-    return finishServiceConfig(to, session, 'barf');
+    session.step = 'catalog_barf_entrega';
+    return [M.barfEntregaButtons(to)];
   }
   return [M.barfOptionsList(to)];
+}
+
+function handleCatalogBarfEntrega(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('barfentrega_')) {
+    session.barfEntregas = Number(incoming.id.slice('barfentrega_'.length));
+    return finishServiceConfig(to, session, 'barf');
+  }
+  return [M.barfEntregaButtons(to)];
+}
+
+function handleCatalogDentalFreq(to, session, incoming) {
+  if (incoming.type === 'interactive' && incoming.id.startsWith('dentalfreq_')) {
+    session.dentalFreq = incoming.id.slice('dentalfreq_'.length);
+    return finishServiceConfig(to, session, 'dental');
+  }
+  return [M.dentalFrequencyButtons(to, session.weightIdx)];
 }
 
 function handleCatalogAdded(to, session, incoming) {

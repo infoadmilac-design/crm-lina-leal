@@ -221,6 +221,18 @@ function banoNotesPrompt(to) {
   return textMessage(to, '¿Alguna instrucción especial para el corte (largo, estilo, zonas a evitar)? Escríbela, o responde "ninguna".');
 }
 
+function banoFrequencyButtons(to, weightIdx, variant) {
+  const p1 = fmt(CATALOG.banoVariantPrice(weightIdx, variant, 1));
+  const p2 = fmt(CATALOG.banoVariantPrice(weightIdx, variant, 2));
+  return buttonMessage(to, {
+    body: `🛁 ¿Cuántas veces al mes? 1× sale ${p1}/mes · 2× sale ${p2}/mes (menos por visita).`,
+    buttons: [
+      { id: 'banofreq_1', title: '1 vez al mes' },
+      { id: 'banofreq_2', title: '2 veces al mes' },
+    ],
+  });
+}
+
 /* ---- paseo: frecuencia + duración + modalidad ---- */
 function paseoFrequencyList(to, weightIdx) {
   return listMessage(to, {
@@ -270,6 +282,31 @@ function barfOptionsList(to) {
         title: 'Combos',
         rows: BARF_OPTIONS.map((o) => ({ id: `barf_${o.val}`, title: o.label, description: fmt(CATALOG.BARF[o.val]) })),
       },
+    ],
+  });
+}
+
+function barfEntregaButtons(to) {
+  const fee = fmt(CATALOG.BARF_ENTREGA_FEE_STATE.value);
+  return buttonMessage(to, {
+    body: `📦 ¿Cómo prefieres la entrega? La cantidad del mes es la misma en ambos casos — 2 entregas cuesta ${fee} más por el viaje extra, pero llega más fresco.`,
+    buttons: [
+      { id: 'barfentrega_1', title: 'Todo de una vez' },
+      { id: 'barfentrega_2', title: '2 entregas' },
+    ],
+  });
+}
+
+/* ---- frecuencia de limpieza dental ---- */
+function dentalFrequencyButtons(to, weightIdx) {
+  const mensual = fmt(CATALOG.dentalPrice(weightIdx, 'mensual'));
+  const estandar = fmt(CATALOG.dentalPrice(weightIdx, 'trimestral'));
+  return buttonMessage(to, {
+    body: `🦷 ¿Cada cuánto? Mensual sale ${mensual}/visita (recurrente, más barato). Cada 3 o 6 meses sale ${estandar}/visita.`,
+    buttons: [
+      { id: 'dentalfreq_mensual', title: 'Mensual' },
+      { id: 'dentalfreq_trimestral', title: 'Cada 3 meses' },
+      { id: 'dentalfreq_semestral', title: 'Cada 6 meses' },
     ],
   });
 }
@@ -413,11 +450,14 @@ module.exports = {
   weightPicker,
   servicesChecklist,
   banoVariantList,
+  banoFrequencyButtons,
   banoNotesPrompt,
   paseoFrequencyList,
   paseoDurationButtons,
   paseoModalidadButtons,
   barfOptionsList,
+  barfEntregaButtons,
+  dentalFrequencyButtons,
   dateStrForOffset,
   formatSlotLabel,
   dayPickerList,

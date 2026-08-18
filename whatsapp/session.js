@@ -17,11 +17,14 @@ function defaultSession() {
     weightIdx: 0,
     lastServiceId: null,
     banoVariant: null,
+    banoFreq: null,
     banoNotes: null,
     paseoFreq: null,
     paseoDuration: null,
     paseoModalidad: null,
     barfKey: 'pollo-250',
+    barfEntregas: null,
+    dentalFreq: null,
     services: {},
     // Negociación de horario cliente↔colaborador (ver router.js)
     proposedSlots: {}, // { [serviceId]: "YYYY-MM-DDTHH:MM" }
@@ -53,10 +56,13 @@ function activeServiceIds(session) {
 function priceOpts(session) {
   return {
     banoVariant: session.banoVariant,
+    banoFreq: session.banoFreq,
     paseoFreq: session.paseoFreq,
     paseoDuration: session.paseoDuration,
     paseoModalidad: session.paseoModalidad,
     barfKey: session.barfKey,
+    barfEntregas: session.barfEntregas,
+    dentalFreq: session.dentalFreq,
   };
 }
 
@@ -67,6 +73,7 @@ function ticketFor(session) {
     let label = meta.label;
     if (id === 'bano' && session.banoVariant) {
       label = CATALOG.BANO_VARIANTS[session.banoVariant].label;
+      label += ` (${session.banoFreq || 1}×/mes)`;
     }
     if (id === 'paseo' && session.paseoFreq) {
       const freqLabel = `${session.paseoFreq}×/semana`;
@@ -78,6 +85,10 @@ function ticketFor(session) {
     if (id === 'barf') {
       const opt = CATALOG.BARF_OPTIONS.find((o) => o.val === session.barfKey);
       label += ' · ' + (opt ? opt.label : '');
+      label += session.barfEntregas === 2 ? ' · 2 entregas/mes' : ' · 1 entrega/mes';
+    }
+    if (id === 'dental' && session.dentalFreq) {
+      label += ` (${CATALOG.DENTAL_FREQ_OPTIONS[session.dentalFreq].label})`;
     }
     const p = CATALOG.price(id, session.weightIdx, opts);
     return { label, price: CATALOG.fmt(p) };
@@ -86,4 +97,4 @@ function ticketFor(session) {
   return { lines, total };
 }
 
-module.exports = { getSession, resetSession, activeServiceIds, ticketFor };
+module.exports = { getSession, resetSession, activeServiceIds, ticketFor, priceOpts };

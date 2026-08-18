@@ -8,7 +8,21 @@ const db = require('./db.js');
 const M = require('./messages.js');
 const CATALOG = require('../catalog.js');
 
-const ALLOWED_SETTING_KEYS = ['commission', 'business_info', 'bot_texts'];
+const ALLOWED_SETTING_KEYS = ['commission', 'business_info', 'bot_texts', 'pricing'];
+
+/** Snapshot de los precios base efectivos ahora mismo (defaults de catalog.js
+    ya con cualquier override aplicado) — lo que ve la calculadora del admin
+    si no ha guardado nada propio todavía. */
+function currentPricingDefaults() {
+  return {
+    transporte: CATALOG.CONFIG.transporte,
+    bano: CATALOG.PR.bano,
+    paseoPorPaseo: CATALOG.PR.paseoPorPaseo,
+    vacunas: CATALOG.PR.vacunas,
+    dental: CATALOG.PR.dental,
+    barfEntregaFee: CATALOG.BARF_ENTREGA_FEE_STATE.value,
+  };
+}
 
 function ah(fn) {
   return (req, res, next) => {
@@ -104,7 +118,7 @@ function createAdminApiRouter() {
     const settings = await db.getSettings();
     res.json({
       settings,
-      defaults: { commission: CATALOG.COMMISSION_PCT, botTexts: M.DEFAULT_BOT_TEXTS },
+      defaults: { commission: CATALOG.COMMISSION_PCT, botTexts: M.DEFAULT_BOT_TEXTS, pricing: currentPricingDefaults() },
     });
   }));
 
@@ -117,7 +131,23 @@ function createAdminApiRouter() {
     // Se aplica en caliente en este mismo proceso — sin reiniciar el servidor.
     if (key === 'commission') CATALOG.setOverrides({ commission: value });
     if (key === 'bot_texts') M.setOverrides({ botTexts: value });
+    if (key === 'pricing') CATALOG.setOverrides({ pricing: value });
     res.json({ key, value });
+  }));
+
+  /* ---- Calculadora de precios: desglose transparente cliente/ALLPETZ/colaborador
+     para un ejemplo puntual, sin guardar nada — solo simula. ---- */
+  router.get('/pricing/preview', requireAdmin, ah(async (req, res) => {
+    const { service, weightIdx, ...rest } = req.query;
+    if (!service || !CATALOG.ROW_META[service]) return res.status(400).json({ error: 'servicio no válido' });
+    const wIdx = Math.min(3, Math.max(0, Number(weightIdx) || 0));
+    const opts = {
+      banoVariant: rest.banoVariant, banoFreq: Number(rest.banoFreq) || undefined,
+      paseoFreq: Number(rest.paseoFreq) || undefined, paseoDuration: rest.paseoDuration, paseoModalidad: rest.paseoModalidad,
+      barfKey: rest.barfKey, barfEntregas: Number(rest.barfEntregas) || undefined,
+      dentalFreq: rest.dentalFreq,
+    };
+    res.json(CATALOG.priceBreakdown(service, wIdx, opts));
   }));
 
   /* ---- Reporte financiero ---- */
