@@ -7,10 +7,12 @@
 'use strict';
 
 const CATALOG = require('../catalog.js');
+const Session = require('./session.js');
 const {
   SERVICES, WEIGHTS, ROW_META, BUILDER_ROW_IDS, BARF_OPTIONS, TIER, cop, fmt, price,
   BANO_VARIANT_ORDER, PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD,
 } = CATALOG;
+const { DAY_NAMES, DAY_NAMES_SHORT, FRANJA_LABEL } = Session;
 
 function base(to) {
   return { messaging_product: 'whatsapp', to, recipient_type: 'individual' };
@@ -71,6 +73,13 @@ const BOT_TEXTS = Object.assign({}, DEFAULT_BOT_TEXTS);
     catalog.js::setOverrides(), síncrono/sin red. */
 function setOverrides(overrides) {
   if (overrides && overrides.botTexts) Object.assign(BOT_TEXTS, overrides.botTexts);
+}
+
+// Pieza oficial de marca — la misma que se usa en el mockup del ecosistema.
+const WELCOME_PHOTO = 'https://infoadmilac-design.github.io/crm-lina-leal/images/portada1.jpg';
+
+function welcomePhoto(to) {
+  return imageMessage(to, WELCOME_PHOTO, 'ALLPETZ 🐾 — Membresía Integral de Cuidado Canino');
 }
 
 function welcomeIntro(to) {
@@ -289,19 +298,34 @@ function banoFrequencyButtons(to, weightIdx, variant) {
 }
 
 /* ---- paseo: frecuencia + duración + modalidad ---- */
-function paseoFrequencyList(to, weightIdx) {
-  return listMessage(to, {
-    body: '🐕 Paseos: ¿con qué frecuencia a la semana?',
-    buttonLabel: 'Elegir frecuencia',
-    sections: [
-      {
-        title: 'Frecuencia',
-        rows: PASEO_FREQ_OPTIONS.map((n) => ({
-          id: `paseofreq_${n}`,
-          title: `${n}×/semana`,
-          description: fmt(CATALOG.paseoPrice(weightIdx, n, 'corta', 'solo')),
-        })),
-      },
+/* ---- Paseos: el cliente elige los DÍAS (no un número) — el precio por
+   paseo baja mientras más días elige, ver catalog.js::paseoFreqBase(). ---- */
+function paseoDaysChecklist(to, session) {
+  const days = session.paseoDays || [];
+  const rows = DAY_NAMES.map((name, i) => ({
+    id: `paseoday_${i}`,
+    title: `${days.includes(i) ? '✅' : '◻️'} ${name}`,
+    description: '',
+  }));
+  rows.push({
+    id: 'paseoday_continue',
+    title: '▶️ Continuar',
+    description: days.length ? `${days.length} día${days.length === 1 ? '' : 's'} elegido${days.length === 1 ? '' : 's'} — ${fmt(CATALOG.paseoFreqBase(session.weightIdx, days.length))}/paseo` : 'Elige al menos un día',
+  });
+  const p1 = fmt(CATALOG.paseoFreqBase(session.weightIdx, 1));
+  const p7 = fmt(CATALOG.paseoFreqBase(session.weightIdx, 7));
+  const body = session.paseoScheduleOnly
+    ? `🐕 Tu plan incluye ${session.paseoFreq}×/semana de paseo — ¿qué días prefieres? (esto no cambia el precio, ya está cerrado en tu plan)`
+    : `🐕 ¿Qué días quieres que salga a pasear? Entre más días elijas, más baja el precio por cada paseo: 1 día/semana sale ${p1}/paseo, 7 días/semana baja a ${p7}/paseo.`;
+  return listMessage(to, { body, buttonLabel: 'Elegir días', sections: [{ title: 'Días de paseo', rows }] });
+}
+
+function paseoFranjaButtons(to) {
+  return buttonMessage(to, {
+    body: '⏰ ¿En qué franja prefieres los paseos?',
+    buttons: [
+      { id: 'paseofranja_manana', title: '🌅 Mañana' },
+      { id: 'paseofranja_tarde', title: '🌇 Tarde' },
     ],
   });
 }
@@ -402,12 +426,12 @@ function formatSlotLabel(iso) {
 }
 
 function dayPickerList(to) {
-  const rows = [{ id: 'slotday_skip', title: 'Que ustedes me contacten', description: 'Un colaborador te propone el horario' }];
-  for (let i = 0; i < 6; i++) {
+  const rows = [];
+  for (let i = 0; i < 7; i++) {
     rows.push({ id: `slotday_${i}`, title: dayLabel(dateStrForOffset(i)), description: i === 0 ? 'Hoy' : '' });
   }
   return listMessage(to, {
-    body: '📅 ¿Qué día te gustaría agendar tu cita?',
+    body: '📅 Tú eliges el día — ¿cuál te queda mejor?',
     buttonLabel: 'Elegir día',
     sections: [{ title: 'Próximos días', rows }],
   });
@@ -419,6 +443,18 @@ function timePickerList(to) {
     buttonLabel: 'Elegir hora',
     sections: [{ title: 'Horario', rows: TIME_SLOTS.map((t) => ({ id: `slottime_${t}`, title: timeLabel(t), description: '' })) }],
   });
+}
+
+/* ---- Aviso que se manda apenas el cliente propone un horario, para
+   cualquier servicio — el cliente siempre elige, y siempre sabe qué sigue. ---- */
+function slotProposedNotice(to, serviceLabel, whenLabel) {
+  return textMessage(to, `⏳ Perfecto — en unos minutos te confirmamos si *${serviceLabel}* puede ser el *${whenLabel}* que elegiste. Si tu colaborador no puede a esa hora, te va a proponer otro horario para que tú decidas. 🐾`);
+}
+
+function paseoScheduleNotice(to, session) {
+  const days = (session.paseoDays || []).slice().sort((a, b) => a - b).map((d) => DAY_NAMES_SHORT[d]).join(', ');
+  const franja = FRANJA_LABEL[session.paseoFranja] || '';
+  return textMessage(to, `⏳ Perfecto — quedaron tus paseos para *${days}*, en la *${franja}*. En unos minutos lo confirmamos con tu colaborador, o te proponemos otro horario si hace falta. 🐾`);
 }
 
 /* ---- tras configurar un servicio: seguir agregando o ver resumen ---- */
@@ -495,6 +531,7 @@ module.exports = {
   buttonMessage,
   setOverrides,
   DEFAULT_BOT_TEXTS,
+  welcomePhoto,
   welcomeIntro,
   askPetName,
   askBreed,
@@ -510,7 +547,8 @@ module.exports = {
   banoVariantList,
   banoFrequencyButtons,
   banoNotesPrompt,
-  paseoFrequencyList,
+  paseoDaysChecklist,
+  paseoFranjaButtons,
   paseoDurationButtons,
   paseoModalidadButtons,
   barfOptionsList,
@@ -520,6 +558,8 @@ module.exports = {
   formatSlotLabel,
   dayPickerList,
   timePickerList,
+  slotProposedNotice,
+  paseoScheduleNotice,
   serviceAddedButtons,
   ticketSummary,
   planConfirmed,
