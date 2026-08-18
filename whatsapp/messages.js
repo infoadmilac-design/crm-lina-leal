@@ -168,10 +168,20 @@ function weightPicker(to) {
   });
 }
 
-/* ---- paso 2, checklist de servicios (multi-select simulado) ---- */
-function servicesChecklist(to, weightIdx, selected) {
+/* ---- paso 2, checklist de servicios (multi-select simulado) ----
+   Recibe la sesión completa (no solo weightIdx + on/off) para poder mostrar
+   el precio y el detalle REAL de cada servicio ya configurado — antes
+   mostraba siempre el precio por defecto, sin reflejar lo que el cliente
+   ya había elegido (frecuencia, variante, etc). */
+function servicesChecklist(to, session) {
+  const opts = {
+    banoVariant: session.banoVariant, banoFreq: session.banoFreq,
+    paseoFreq: session.paseoFreq, paseoDuration: session.paseoDuration, paseoModalidad: session.paseoModalidad,
+    barfKey: session.barfKey, barfEntregas: session.barfEntregas,
+    dentalFreq: session.dentalFreq,
+  };
   return listMessage(to, {
-    body: '¿Qué incluye su plan? Toca una fila para activarla o desactivarla.',
+    body: '¿Qué incluye su plan? Toca una fila para activarla o desactivarla. "Continuar" te deja ajustar la frecuencia de cada una antes del resumen.',
     buttonLabel: 'Ver servicios',
     sections: [
       {
@@ -179,14 +189,16 @@ function servicesChecklist(to, weightIdx, selected) {
         rows: [
           ...BUILDER_ROW_IDS.map((id) => {
             const row = ROW_META[id];
-            const on = !!selected[id];
+            const on = !!session.services[id];
+            const p = fmt(price(id, session.weightIdx, opts));
+            const detail = on ? CATALOG.serviceDetailLabel(id, session.weightIdx, opts) : `Desde`;
             return {
               id: `toggle_${id}`,
               title: `${on ? '✅' : '◻️'} ${row.emoji} ${row.label}`,
-              description: fmt(price(id, weightIdx, {})),
+              description: `${detail} · ${p}`,
             };
           }),
-          { id: 'services_continue', title: '▶️ Continuar', description: 'Ir al resumen' },
+          { id: 'services_continue', title: '▶️ Continuar', description: 'Ajustar cada una y ver el resumen' },
         ],
       },
     ],
@@ -200,7 +212,30 @@ const BANO_ROW_LABEL = {
   corte_raza: 'Corte según raza',
 };
 
-/* ---- Paquetes inteligentes (se ofrecen apenas se conoce la mascota) ---- */
+/* ---- Paquetes inteligentes (se ofrecen apenas se conoce la mascota) ----
+   WhatsApp no tiene "tarjetas": la aproximación más cercana es un mensaje de
+   texto con un bloque bien separado por plan (nombre, qué incluye sin
+   ambigüedad, precio, ahorro) — packagesDetail() — seguido de la lista para
+   elegir (packagesList()). Así el cliente entiende qué está comparando
+   antes de tocar nada. */
+function packagesDetail(to, petName, weightIdx) {
+  const intro = `¡Hola${petName ? ' ' + petName : ''}! 🐾 Así se ven los 3 planes que armé según su tamaño:\n\n`;
+  const blocks = CATALOG.PACKAGE_ORDER.map((id) => {
+    const pkg = CATALOG.PACKAGES[id];
+    const opts = pkg.opts(weightIdx);
+    const lines = pkg.servicesList.map((sid) => {
+      const meta = ROW_META[sid];
+      return `${meta.emoji} ${meta.label} — ${CATALOG.serviceDetailLabel(sid, weightIdx, opts)}`;
+    }).join('\n');
+    const total = CATALOG.packageTotal(id, weightIdx);
+    const aLaCarte = CATALOG.packageALaCarteTotal(id, weightIdx);
+    const savings = aLaCarte - total;
+    const savingsLine = savings > 0 ? `\n💰 Ahorras ${fmt(savings)}/mes vs. armarlo por separado` : '';
+    return `*${pkg.label}* — ${pkg.badge}\n_${pkg.tagline}_\n${lines}\n*Total: ${fmt(total)}/mes*${savingsLine}`;
+  });
+  return textMessage(to, intro + blocks.join('\n\n') + '\n\n👇 Elige uno, o toca "Arma tu propio plan" para armarlo tú mismo.');
+}
+
 function packagesList(to, petName, weightIdx) {
   const rows = CATALOG.PACKAGE_ORDER.map((id) => {
     const pkg = CATALOG.PACKAGES[id];
@@ -209,7 +244,7 @@ function packagesList(to, petName, weightIdx) {
   });
   rows.push({ id: 'pkg_custom', title: 'Arma tu propio plan', description: 'Elige y combina servicio por servicio' });
   return listMessage(to, {
-    body: `¡Hola${petName ? ' ' + petName : ''}! 🐾 Armé 3 planes según su tamaño — elige el que más te guste, o arma el tuyo.`,
+    body: '¿Cuál eliges?',
     buttonLabel: 'Ver planes',
     sections: [{ title: 'Planes sugeridos', rows }],
   });
@@ -469,6 +504,7 @@ module.exports = {
   catalogDetail,
   weightPicker,
   servicesChecklist,
+  packagesDetail,
   packagesList,
   packageAppliedIntro,
   banoVariantList,
