@@ -210,6 +210,9 @@ function handleCatalogDetail(to, session, incoming) {
    tanto desde el catálogo (session.returnTo = 'catalog') como desde el
    armador de plan por lote (session.returnTo = 'bulk'). */
 function startServiceConfig(to, session, builderId) {
+  // Configurar algo a mano rompe el precio cerrado del paquete — a partir de
+  // aquí se cobra servicio por servicio, como en el armador de siempre.
+  session.packageDiscountPct = null;
   if (builderId === 'bano') {
     session.step = 'catalog_bano_variant';
     return [M.banoVariantList(to, session.weightIdx)];
@@ -419,6 +422,7 @@ function handlePlanServices(to, session, incoming) {
   if (incoming.id.startsWith('toggle_')) {
     const id = incoming.id.slice('toggle_'.length);
     session.services[id] = !session.services[id];
+    session.packageDiscountPct = null;
     return [M.servicesChecklist(to, session.weightIdx, session.services)];
   }
   if (incoming.id === 'services_continue') {

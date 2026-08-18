@@ -276,6 +276,7 @@
       id: 'esencial', label: 'Esencial', badge: 'Básico',
       tagline: 'Para empezar sin comprometerse a mucho.',
       servicesList: ['paseo', 'bano'],
+      bundleDiscount: 0, // a propósito sin descuento — es el hueco que empuja a "Activo"
       opts: (weightIdx) => ({
         paseoFreq: 3, paseoDuration: 'corta', paseoModalidad: 'solo',
         banoVariant: 'general', banoFreq: 1,
@@ -285,6 +286,7 @@
       id: 'activo', label: 'Activo', badge: '⭐ Recomendado',
       tagline: 'Lo que la mayoría de perros necesita.',
       servicesList: ['paseo', 'bano', 'barf'],
+      bundleDiscount: 0.09, // el que queremos que se vea como el mejor trato
       opts: (weightIdx) => ({
         paseoFreq: 5, paseoDuration: 'corta', paseoModalidad: 'solo',
         banoVariant: 'corte', banoFreq: 2,
@@ -295,6 +297,7 @@
       id: 'fullcare', label: 'Full Care', badge: 'El más completo',
       tagline: 'Para el dueño que no quiere pensar en nada.',
       servicesList: ['paseo', 'bano', 'barf', 'vacunas', 'dental'],
+      bundleDiscount: 0.09,
       opts: (weightIdx) => ({
         paseoFreq: 7, paseoDuration: 'corta', paseoModalidad: 'solo',
         banoVariant: 'corte_raza', banoFreq: 2,
@@ -306,11 +309,20 @@
   // Ancla cara primero, recomendado al medio, básico al final.
   const PACKAGE_ORDER = ['fullcare', 'activo', 'esencial'];
 
-  function packageTotal(packageId, weightIdx) {
+  /** Suma de los servicios del paquete armados por separado, sin descuento —
+      es el precio de referencia contra el que se muestra el "ahorras X". */
+  function packageALaCarteTotal(packageId, weightIdx) {
     const pkg = PACKAGES[packageId];
     if (!pkg) return 0;
     const opts = pkg.opts(weightIdx);
     return pkg.servicesList.reduce((sum, id) => sum + price(id, weightIdx, opts), 0);
+  }
+
+  function packageTotal(packageId, weightIdx) {
+    const pkg = PACKAGES[packageId];
+    if (!pkg) return 0;
+    const aLaCarte = packageALaCarteTotal(packageId, weightIdx);
+    return round500(aLaCarte * (1 - (pkg.bundleDiscount || 0)));
   }
 
   return {
@@ -320,7 +332,7 @@
     DENTAL_FREQ_OPTIONS, DENTAL_FREQ_ORDER, dentalPrice,
     SERVICE_DURATION_MIN, durationMinutes,
     COMMISSION_PCT, splitEarnings, priceBreakdown, transporteFor, CONFIG,
-    PACKAGES, PACKAGE_ORDER, packageTotal,
+    PACKAGES, PACKAGE_ORDER, packageTotal, packageALaCarteTotal, round500,
     setOverrides,
   };
 });
