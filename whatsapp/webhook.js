@@ -84,13 +84,7 @@ async function persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt, 
     }
     if (!hadPlanConfirmedAt && s.planConfirmedAt) {
       const activeIds = session.activeServiceIds(s);
-      const opts = {
-        banoVariant: s.banoVariant,
-        paseoFreq: s.paseoFreq,
-        paseoDuration: s.paseoDuration,
-        paseoModalidad: s.paseoModalidad,
-        barfKey: s.barfKey,
-      };
+      const opts = session.priceOpts(s);
       const petId = await db.latestPetId(from);
       const lines = activeIds.map((serviceId) => ({
         serviceId,

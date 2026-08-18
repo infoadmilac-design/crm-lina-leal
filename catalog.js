@@ -1,10 +1,12 @@
 /* ALLPETZ — catálogo y precios compartidos entre la app web y el bot de WhatsApp.
    Única fuente de verdad: no dupliques estos valores en otro lugar.
 
-   Los precios de PASEO por frecuencia/duración/modalidad y los de los 3
-   subtipos de BAÑO son ESTIMADOS (calculados a partir de los precios reales
-   que ya existían), pendientes de que el dueño los ajuste con sus números
-   reales — ver banoVariantPrice() y paseoPrice() más abajo. */
+   Precios calibrados contra investigación de mercado en Bogotá y la Sabana
+   (agosto 2026) — ver el documento "Estrategia de Paquetes ALLPETZ". Margen
+   ALLPETZ objetivo: 10–15% (12% por defecto, ver COMMISSION_PCT). Todos los
+   números base de este archivo son el DEFAULT — el panel de administrador
+   los puede sobreescribir en caliente vía setOverrides() (ver Configuración
+   → Calculadora de precios). */
 (function (root, factory) {
   const catalog = factory();
   if (typeof module === 'object' && module.exports) module.exports = catalog; // Node (bot de WhatsApp)
@@ -15,16 +17,31 @@
   function round500(n) { return Math.round(n / 500) * 500; }
 
   const PR = {
-    bano: [52000, 84500, 97500, 117000],
-    // anclas reales conservadas: 1×/semana y 5×/semana. El resto de
-    // frecuencias (2,3,4,6,7) se interpola/extrapola en paseoPrice().
-    paseo1x: [78000, 78000, 97500, 97500],
-    paseo5x: [110500, 123500, 123500, 149500],
-    vacunas: [0, 58500, 58500, 58500],
+    // Baño: precio por VISITA, variante "general" (sin corte), por tier de peso.
+    // Calibrado contra Wakypet Bogotá (servicio real a domicilio).
+    bano: [68000, 82000, 103000, 132000],
+    // Paseos: precio POR PASEO, por tier de peso × frecuencia semanal (1..7).
+    // Cae ~5% por cada nivel de frecuencia — más volumen, menos por unidad.
+    paseoPorPaseo: [
+      [19500, 18000, 16500, 15500, 14500, 13500, 13000], // Mini
+      [22000, 20000, 18500, 17500, 16000, 15000, 14500], // Pequeño
+      [23000, 21000, 19500, 18000, 17000, 16000, 15000], // Mediano
+      [26500, 24000, 22500, 21000, 19500, 18500, 17500], // Grande
+    ],
+    // Vacunación anual, prorrateada por mes. Mismo valor en los 4 tiers: la
+    // dosis de la vacuna no varía por tamaño del perro, a diferencia del
+    // baño o el paseo. Calibrado contra GoVet (hexadog + antirrábica a
+    // domicilio, transporte incluido en su tarifa).
+    vacunas: [12500, 12500, 12500, 12500],
+    // Limpieza dental: precio por visita (trimestral/semestral). El plan
+    // mensual recurrente tiene descuento aparte, ver DENTAL_FREQ_MULT.
     dental: [78000, 78000, 104000, 104000],
   };
   const BARF = { 'pollo-250': 136500, 'pollo-500': 370500, 'pollo-1000': 643500, 'salmon-250': 429000, 'salmon-500': 663000, 'salmon-1000': 1053000 };
   const BARF_DEFAULT = ['pollo-250', 'pollo-500', 'pollo-1000', 'pollo-1000'];
+  // Entregar en 2 tandas al mes es logística, no más comida — no baja el
+  // precio como paseo/baño, se cobra el viaje extra del colaborador.
+  const BARF_ENTREGA_FEE = 12000;
   const BARF_OPTIONS = [
     { val: 'pollo-250', label: 'Pollo · 250g' },
     { val: 'pollo-500', label: 'Pollo · 500g' },
@@ -92,17 +109,37 @@
       pitch: 'Los accidentes pasan hasta a los perros más cuidadosos (culpa mía, lo admito, ese salto del sofá no fue buena idea 🛋️). Con un seguro para mí, tú no te preocupas por la cuenta del veterinario y yo sigo haciendo travesuras sin culpa.' },
   ];
 
-  // ---- Baño: 3 subtipos (multiplicador estimado sobre el precio general) ----
+  // ---- Transporte: domicilio fijo, se le paga entero al colaborador (no
+  // entra a la comisión de ALLPETZ). Aplica a servicios de visita puntual —
+  // paseo y BARF no lo llevan (paseo ya trae la eficiencia de ruta metida en
+  // su tabla por frecuencia; BARF no requiere que alguien "atienda" nada).
+  // Vacunas tampoco: el precio de mercado con el que se calibró ya lo incluye.
+  const CONFIG = { transporte: 8000 };
+  const TRANSPORTE_SERVICES = { bano: true, dental: true };
+  function transporteFor(serviceId) { return TRANSPORTE_SERVICES[serviceId] ? CONFIG.transporte : 0; }
+
+  // ---- Baño: 3 subtipos + frecuencia mensual (1 o 2 veces) ----
   const BANO_VARIANTS = {
     general: { label: 'Baño general', mult: 1 },
-    corte: { label: 'Baño y corte', mult: 1.4 },
-    corte_raza: { label: 'Baño y corte según raza', mult: 1.7 },
+    corte: { label: 'Baño y corte', mult: 1.15 },
+    corte_raza: { label: 'Baño y corte según raza', mult: 1.35 },
   };
   const BANO_VARIANT_ORDER = ['general', 'corte', 'corte_raza'];
+  const BANO_FREQ_OPTIONS = [1, 2];
+  // 2×/mes: -8% por visita — premia el compromiso, igual que dental mensual.
+  const BANO_FREQ_MULT = { 1: 1, 2: 0.92 };
 
-  function banoVariantPrice(weightIdx, variant) {
+  /** Precio de UNA visita de baño (variante + descuento por frecuencia), transporte incluido. */
+  function banoVisitPrice(weightIdx, variant, freq) {
     const v = BANO_VARIANTS[variant] || BANO_VARIANTS.general;
-    return round500(PR.bano[weightIdx] * v.mult);
+    const freqMult = BANO_FREQ_MULT[freq] != null ? BANO_FREQ_MULT[freq] : 1;
+    return round500(PR.bano[weightIdx] * v.mult * freqMult) + transporteFor('bano');
+  }
+
+  /** Precio mensual de baño: visitas × precio por visita. */
+  function banoVariantPrice(weightIdx, variant, freq) {
+    const f = BANO_FREQ_OPTIONS.includes(freq) ? freq : 1;
+    return banoVisitPrice(weightIdx, variant, f) * f;
   }
 
   // ---- Paseos: frecuencia (1–7×/semana) + duración + modalidad ----
@@ -116,20 +153,36 @@
     juego: { label: 'Paseo + juego (grupo de hasta 3 perros)', mult: 1.3 },
     grupal: { label: 'Paseo grupal (hasta 8 perros)', mult: 0.85 },
   };
+  const SEMANAS_MES = 4.345;
 
-  /** Precio base por frecuencia: interpola/extrapola entre las anclas 1×/5× reales. */
+  /** Precio por UN paseo (antes de duración/modalidad), según tier y frecuencia semanal. */
   function paseoFreqBase(weightIdx, freq) {
-    const p1 = PR.paseo1x[weightIdx];
-    const p5 = PR.paseo5x[weightIdx];
-    const step = (p5 - p1) / 4;
-    return p1 + step * (freq - 1);
+    const row = PR.paseoPorPaseo[weightIdx] || PR.paseoPorPaseo[2];
+    const f = Math.min(7, Math.max(1, Math.round(freq || 1)));
+    return row[f - 1];
   }
 
+  /** Precio TOTAL MENSUAL de paseos: precio por paseo × paseos/mes. */
   function paseoPrice(weightIdx, freq, duration, modalidad) {
-    const base = paseoFreqBase(weightIdx, freq || 1);
+    const f = Math.min(7, Math.max(1, Math.round(freq || 1)));
+    const base = paseoFreqBase(weightIdx, f);
     const durMult = (PASEO_DURATION[duration] || PASEO_DURATION.corta).mult;
     const modMult = (PASEO_MODALIDAD[modalidad] || PASEO_MODALIDAD.solo).mult;
-    return round500(base * durMult * modMult);
+    const porPaseo = round500(base * durMult * modMult);
+    return round500(porPaseo * f * SEMANAS_MES);
+  }
+
+  // ---- Limpieza dental: el cliente elige cada cuánto ----
+  const DENTAL_FREQ_OPTIONS = {
+    mensual: { label: 'Mensual (recurrente)', mult: 0.82 },
+    trimestral: { label: 'Cada 3 meses', mult: 1 },
+    semestral: { label: 'Cada 6 meses', mult: 1 },
+  };
+  const DENTAL_FREQ_ORDER = ['mensual', 'trimestral', 'semestral'];
+
+  function dentalPrice(weightIdx, freq) {
+    const f = DENTAL_FREQ_OPTIONS[freq] || DENTAL_FREQ_OPTIONS.trimestral;
+    return round500(PR.dental[weightIdx] * f.mult) + transporteFor('dental');
   }
 
   function cop(n) { return '$' + Math.round(n).toLocaleString('es-CO'); }
@@ -145,43 +198,75 @@
     return SERVICE_DURATION_MIN[serviceId] || 30;
   }
 
-  // ---- Comisión de ALLPETZ por servicio (placeholder 20% en los cinco,
-  // ajustar cuando el dueño dé los números reales de cada servicio) ----
-  const COMMISSION_PCT = { bano: 0.20, paseo: 0.20, barf: 0.20, vacunas: 0.20, dental: 0.20 };
+  // ---- Comisión de ALLPETZ por servicio — margen objetivo 10-15%, 12% por
+  // defecto (ver "Estrategia de Paquetes ALLPETZ", sección de verificación
+  // de margen). Editable por servicio desde el panel de administrador. ----
+  const COMMISSION_PCT = { bano: 0.12, paseo: 0.12, barf: 0.12, vacunas: 0.12, dental: 0.12 };
 
-  /** Reparte el precio de una reserva entre la utilidad del colaborador y la comisión de ALLPETZ. */
+  /** Reparte el precio de una reserva entre la utilidad del colaborador y la
+      comisión de ALLPETZ. El transporte (si aplica al servicio) se descuenta
+      antes de calcular la comisión — es reembolso de gasto del colaborador,
+      no utilidad de ALLPETZ, y se le paga completo. */
   function splitEarnings(price, serviceId) {
-    const pct = COMMISSION_PCT[serviceId] != null ? COMMISSION_PCT[serviceId] : 0.20;
-    const commission = Math.round(price * pct);
-    return { commission, payout: price - commission };
+    const transporte = transporteFor(serviceId);
+    const base = Math.max(0, price - transporte);
+    const pct = COMMISSION_PCT[serviceId] != null ? COMMISSION_PCT[serviceId] : 0.12;
+    const commission = Math.round(base * pct);
+    return { commission, payout: price - commission, transporte, base };
   }
 
-  /** Aplica valores editables desde el panel de administrador (comisión por
-      ahora) sobre los mapas fijos de este módulo — muta en memoria, sigue
-      siendo síncrono/sin red, así que router.js (que requiere catalog.js
-      sin poder hacer I/O) no se ve afectado. Se llama una vez al arrancar
-      el servidor y cada vez que el admin guarda un cambio (ver webhook.js). */
-  function setOverrides(overrides) {
-    if (overrides && overrides.commission) Object.assign(COMMISSION_PCT, overrides.commission);
+  /** Desglose transparente cliente / ALLPETZ / colaborador para un ítem del
+      armador — usado por la calculadora de precios del panel de admin y
+      reusable en cualquier otro lugar que necesite mostrar el reparto. */
+  function priceBreakdown(id, weightIdx, opts) {
+    const total = price(id, weightIdx, opts);
+    const { commission, payout, transporte, base } = splitEarnings(total, id);
+    return { cliente: total, allpetz: commission, colaborador: payout, transporte, base, pct: COMMISSION_PCT[id] };
   }
+
+  /** Aplica valores editables desde el panel de administrador (comisión,
+      transporte y tablas de precio base) sobre los mapas fijos de este
+      módulo — muta en memoria, sigue siendo síncrono/sin red, así que
+      router.js (que requiere catalog.js sin poder hacer I/O) no se ve
+      afectado. Se llama una vez al arrancar el servidor y cada vez que el
+      admin guarda un cambio (ver webhook.js). */
+  function setOverrides(overrides) {
+    if (!overrides) return;
+    if (overrides.commission) Object.assign(COMMISSION_PCT, overrides.commission);
+    if (overrides.pricing) {
+      const p = overrides.pricing;
+      if (p.transporte != null) CONFIG.transporte = p.transporte;
+      if (p.bano) Object.assign(PR, { bano: p.bano });
+      if (p.paseoPorPaseo) Object.assign(PR, { paseoPorPaseo: p.paseoPorPaseo });
+      if (p.vacunas) Object.assign(PR, { vacunas: p.vacunas });
+      if (p.dental) Object.assign(PR, { dental: p.dental });
+      if (p.barfEntregaFee != null) BARF_ENTREGA_FEE_STATE.value = p.barfEntregaFee;
+    }
+  }
+
+  // BARF_ENTREGA_FEE es un valor con nombre (no un objeto), y setOverrides
+  // necesita mutar algo en memoria sin romper la referencia exportada —
+  // por eso vive dentro de un contenedor mutable.
+  const BARF_ENTREGA_FEE_STATE = { value: BARF_ENTREGA_FEE };
 
   /** Precio de un ítem del armador para un peso dado. weightIdx: 0..3. */
   function price(id, weightIdx, opts) {
     opts = opts || {};
-    if (id === 'bano') return banoVariantPrice(weightIdx, opts.banoVariant || 'general');
+    if (id === 'bano') return banoVariantPrice(weightIdx, opts.banoVariant || 'general', opts.banoFreq || 1);
     if (id === 'paseo') return paseoPrice(weightIdx, opts.paseoFreq || 1, opts.paseoDuration || 'corta', opts.paseoModalidad || 'solo');
-    if (id === 'barf') return BARF[opts.barfKey || 'pollo-250'];
+    if (id === 'barf') return BARF[opts.barfKey || 'pollo-250'] + (opts.barfEntregas === 2 ? BARF_ENTREGA_FEE_STATE.value : 0);
     if (id === 'vacunas') return PR.vacunas[weightIdx];
-    if (id === 'dental') return PR.dental[weightIdx];
+    if (id === 'dental') return dentalPrice(weightIdx, opts.dentalFreq || 'trimestral');
     return 0;
   }
 
   return {
-    PR, BARF, BARF_DEFAULT, BARF_OPTIONS, TIER, WEIGHTS, ROW_META, BUILDER_ROW_IDS, SERVICES, cop, fmt, price,
-    BANO_VARIANTS, BANO_VARIANT_ORDER, banoVariantPrice,
-    PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD, paseoPrice,
+    PR, BARF, BARF_DEFAULT, BARF_OPTIONS, BARF_ENTREGA_FEE_STATE, TIER, WEIGHTS, ROW_META, BUILDER_ROW_IDS, SERVICES, cop, fmt, price,
+    BANO_VARIANTS, BANO_VARIANT_ORDER, BANO_FREQ_OPTIONS, BANO_FREQ_MULT, banoVariantPrice, banoVisitPrice,
+    PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD, paseoPrice, paseoFreqBase,
+    DENTAL_FREQ_OPTIONS, DENTAL_FREQ_ORDER, dentalPrice,
     SERVICE_DURATION_MIN, durationMinutes,
-    COMMISSION_PCT, splitEarnings,
+    COMMISSION_PCT, splitEarnings, priceBreakdown, transporteFor, CONFIG,
     setOverrides,
   };
 });

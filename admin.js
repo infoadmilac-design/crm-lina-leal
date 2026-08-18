@@ -42,6 +42,13 @@
       financial: null,
       settings: {},
       settingsDefaults: null,
+      pricingCalc: {
+        service: 'paseo', weightIdx: 2,
+        paseoFreq: 5, paseoDuration: 'corta', paseoModalidad: 'solo',
+        banoVariant: 'general', banoFreq: 1,
+        barfKey: 'pollo-500', barfEntregas: 1,
+        dentalFreq: 'trimestral',
+      },
     };
   }
 
@@ -107,6 +114,10 @@
   async function loadSettings() {
     const res = await api('/admin/settings');
     setState({ settings: res.settings || {}, settingsDefaults: res.defaults });
+    // Aplica lo guardado sobre la copia de catalog.js que corre en este
+    // navegador — así la calculadora de precios parte de la verdad real,
+    // no de los defaults con los que arrancó el archivo.
+    CATALOG.setOverrides({ commission: res.settings.commission, pricing: res.settings.pricing });
   }
 
   async function loadFinancial() {
@@ -176,6 +187,7 @@
       ['clientes', 'Clientes'],
       ['reservas', 'Reservas'],
       ['financiero', 'Financiero'],
+      ['precios', 'Precios'],
       ['configuracion', 'Configuración'],
     ];
     return `<div class="tabs">${tabs.map(([id, label]) => `
@@ -384,28 +396,219 @@
     </div>` : ''}`;
   }
 
-  function renderConfiguracion() {
-    const defaultCommission = (state.settingsDefaults && state.settingsDefaults.commission) || {};
-    const commission = Object.assign({}, defaultCommission, state.settings.commission || {});
+  /* ---------------------------------------------------------------- */
+  /* Calculadora de precios                                            */
+  /* ---------------------------------------------------------------- */
 
+  /** Lee todos los inputs [data-pr*] del DOM y los aplica en caliente sobre
+      la copia de catalog.js de este navegador — así TODO en la pestaña
+      (la tabla y el desglose) siempre refleja lo que hay escrito en los
+      campos, se haya guardado o no todavía. */
+  function applyDraftPricing() {
+    const root = document.getElementById('precios-panel');
+    if (!root) return;
+    const num = (el) => Math.max(0, Number(el.value) || 0);
+
+    const commission = {};
+    root.querySelectorAll('[data-commission]').forEach((el) => {
+      commission[el.getAttribute('data-commission')] = Math.max(0, Math.min(100, Number(el.value) || 0)) / 100;
+    });
+
+    const bano = [0, 1, 2, 3].map((i) => num(root.querySelector(`[data-pr-bano="${i}"]`)));
+    const dental = [0, 1, 2, 3].map((i) => num(root.querySelector(`[data-pr-dental="${i}"]`)));
+    const vacunaVal = num(root.querySelector('[data-pr-vacunas="all"]'));
+    const vacunas = [vacunaVal, vacunaVal, vacunaVal, vacunaVal];
+    const paseoPorPaseo = [0, 1, 2, 3].map((t) => [1, 2, 3, 4, 5, 6, 7].map((f) => num(root.querySelector(`[data-pr-paseo="${t}:${f}"]`))));
+    const transporteEl = root.querySelector('[data-pr="transporte"]');
+    const transporte = transporteEl ? num(transporteEl) : CATALOG.CONFIG.transporte;
+    const barfEntregaEl = root.querySelector('[data-pr-barfentrega="fee"]');
+    const barfEntregaFee = barfEntregaEl ? num(barfEntregaEl) : CATALOG.BARF_ENTREGA_FEE_STATE.value;
+
+    CATALOG.setOverrides({ commission, pricing: { transporte, bano, paseoPorPaseo, vacunas, dental, barfEntregaFee } });
+    return { commission, pricing: { transporte, bano, paseoPorPaseo, vacunas, dental, barfEntregaFee } };
+  }
+
+  function calcOptsFromState() {
+    const c = state.pricingCalc;
+    return {
+      banoVariant: c.banoVariant, banoFreq: c.banoFreq,
+      paseoFreq: c.paseoFreq, paseoDuration: c.paseoDuration, paseoModalidad: c.paseoModalidad,
+      barfKey: c.barfKey, barfEntregas: c.barfEntregas,
+      dentalFreq: c.dentalFreq,
+    };
+  }
+
+  function breakdownHtml() {
+    const c = state.pricingCalc;
+    const b = CATALOG.priceBreakdown(c.service, c.weightIdx, calcOptsFromState());
+    const pctLabel = Math.round(b.pct * 100) + '%';
+    return `
+      <div class="breakdown-box">
+        <div class="breakdown-cell cliente"><div class="l">Cliente paga</div><div class="v">${CATALOG.cop(b.cliente)}</div></div>
+        <div class="breakdown-cell allpetz"><div class="l">ALLPETZ (${pctLabel})</div><div class="v">${CATALOG.cop(b.allpetz)}</div></div>
+        <div class="breakdown-cell colaborador"><div class="l">Colaborador recibe</div><div class="v">${CATALOG.cop(b.colaborador)}</div></div>
+      </div>
+      <div class="breakdown-formula">
+        precio del servicio&nbsp;&nbsp;${CATALOG.cop(b.base)}<br>
+        + transporte (100% al colaborador)&nbsp;&nbsp;${CATALOG.cop(b.transporte)}<br>
+        = precio al cliente&nbsp;&nbsp;${CATALOG.cop(b.cliente)}<br>
+        <br>
+        comisión ALLPETZ = ${pctLabel} × ${CATALOG.cop(b.base)} = ${CATALOG.cop(b.allpetz)}<br>
+        colaborador = ${CATALOG.cop(b.cliente)} − ${CATALOG.cop(b.allpetz)} = ${CATALOG.cop(b.colaborador)}
+      </div>`;
+  }
+
+  function refreshBreakdown() {
+    applyDraftPricing();
+    const box = document.getElementById('pricing-breakdown');
+    if (box) box.innerHTML = breakdownHtml();
+  }
+
+  function renderCalcPicker() {
+    const c = state.pricingCalc;
+    const tierOpts = CATALOG.WEIGHTS.map((w, i) => `<option value="${i}" ${c.weightIdx === i ? 'selected' : ''}>${esc(w.name)}</option>`).join('');
+    let extra = '';
+    if (c.service === 'paseo') {
+      extra = `
+        <div class="field"><label>Veces/semana</label>
+          <select data-calc="paseoFreq">${[1, 2, 3, 4, 5, 6, 7].map((f) => `<option value="${f}" ${c.paseoFreq === f ? 'selected' : ''}>${f}×</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Duración</label>
+          <select data-calc="paseoDuration"><option value="corta" ${c.paseoDuration === 'corta' ? 'selected' : ''}>45 min</option><option value="larga" ${c.paseoDuration === 'larga' ? 'selected' : ''}>1h–1h30</option></select>
+        </div>
+        <div class="field"><label>Modalidad</label>
+          <select data-calc="paseoModalidad">${Object.keys(CATALOG.PASEO_MODALIDAD).map((k) => `<option value="${k}" ${c.paseoModalidad === k ? 'selected' : ''}>${esc(CATALOG.PASEO_MODALIDAD[k].label)}</option>`).join('')}</select>
+        </div>`;
+    } else if (c.service === 'bano') {
+      extra = `
+        <div class="field"><label>Variante</label>
+          <select data-calc="banoVariant">${CATALOG.BANO_VARIANT_ORDER.map((k) => `<option value="${k}" ${c.banoVariant === k ? 'selected' : ''}>${esc(CATALOG.BANO_VARIANTS[k].label)}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Veces/mes</label>
+          <select data-calc="banoFreq">${CATALOG.BANO_FREQ_OPTIONS.map((f) => `<option value="${f}" ${c.banoFreq === f ? 'selected' : ''}>${f}×</option>`).join('')}</select>
+        </div>`;
+    } else if (c.service === 'barf') {
+      extra = `
+        <div class="field"><label>Combo</label>
+          <select data-calc="barfKey">${CATALOG.BARF_OPTIONS.map((o) => `<option value="${o.val}" ${c.barfKey === o.val ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Entregas/mes</label>
+          <select data-calc="barfEntregas"><option value="1" ${c.barfEntregas === 1 ? 'selected' : ''}>1</option><option value="2" ${c.barfEntregas === 2 ? 'selected' : ''}>2</option></select>
+        </div>`;
+    } else if (c.service === 'dental') {
+      extra = `
+        <div class="field"><label>Frecuencia</label>
+          <select data-calc="dentalFreq">${CATALOG.DENTAL_FREQ_ORDER.map((k) => `<option value="${k}" ${c.dentalFreq === k ? 'selected' : ''}>${esc(CATALOG.DENTAL_FREQ_OPTIONS[k].label)}</option>`).join('')}</select>
+        </div>`;
+    }
+    return `
+      <div class="calc-picker">
+        <div class="field"><label>Servicio</label>
+          <select data-calc="service">${SERVICE_IDS.map((id) => `<option value="${id}" ${c.service === id ? 'selected' : ''}>${esc(serviceLabel(id))}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Tamaño</label><select data-calc="weightIdx">${tierOpts}</select></div>
+        ${extra}
+      </div>`;
+  }
+
+  function renderPrecios() {
+    const commission = CATALOG.COMMISSION_PCT;
+    const transporte = CATALOG.CONFIG.transporte;
+    const bano = CATALOG.PR.bano;
+    const dental = CATALOG.PR.dental;
+    const vacunaVal = CATALOG.PR.vacunas[0];
+    const paseo = CATALOG.PR.paseoPorPaseo;
+    const tierNames = CATALOG.WEIGHTS.map((w) => w.name);
+
+    return `
+    <div id="precios-panel">
+      <div class="card">
+        <h2>Calculadora — desglose transparente</h2>
+        <p class="empty" style="padding-top:0;margin-bottom:6px;">Elige un ejemplo. Se recalcula al instante con lo que esté escrito abajo, así no lo hayas guardado.</p>
+        ${renderCalcPicker()}
+        <div id="pricing-breakdown">${breakdownHtml()}</div>
+      </div>
+
+      <div class="card">
+        <h2>Variables generales</h2>
+        <div class="field">
+          <label>Transporte / domicilio (se paga completo al colaborador)</label>
+          <input type="number" min="0" step="500" class="pr-input wide" data-pr="transporte" value="${transporte}">
+        </div>
+        <div class="field">
+          <label>Entrega extra de BARF (2×/mes en vez de 1)</label>
+          <input type="number" min="0" step="500" class="pr-input wide" data-pr-barfentrega="fee" value="${CATALOG.BARF_ENTREGA_FEE_STATE.value}">
+        </div>
+        <p class="mono" style="margin-top:6px;">Comisión ALLPETZ por servicio (10–15% recomendado)</p>
+        <div class="chip-row">
+          ${SERVICE_IDS.map((id) => `
+            <label class="chip">${esc(serviceLabel(id))}
+              <input type="number" min="0" max="100" step="1" style="width:48px;border:none;background:transparent;font-family:'JetBrains Mono',monospace;" data-commission="${id}" value="${Math.round((commission[id] != null ? commission[id] : 0.12) * 100)}">%
+            </label>`).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Paseos — precio por paseo (COP)</h2>
+        <p class="empty" style="padding-top:0;margin-bottom:6px;">Por tamaño y veces/semana. Baja de izquierda a derecha: más frecuencia, menos por unidad.</p>
+        <div class="price-table-wrap"><table class="price-table">
+          <thead><tr><th class="row-label">Tamaño</th>${[1, 2, 3, 4, 5, 6, 7].map((f) => `<th>${f}×/sem</th>`).join('')}</tr></thead>
+          <tbody>
+            ${[0, 1, 2, 3].map((t) => `
+              <tr>
+                <td class="row-label">${esc(tierNames[t])}</td>
+                ${[1, 2, 3, 4, 5, 6, 7].map((f) => `<td><input type="number" min="0" step="500" class="pr-input" data-pr-paseo="${t}:${f}" value="${paseo[t][f - 1]}"></td>`).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <h2>Baño — precio base por visita (general, sin corte)</h2>
+        <p class="empty" style="padding-top:0;margin-bottom:6px;">"Con corte" (+15%) y "corte según raza" (+35%) se calculan solos a partir de este número.</p>
+        <div class="price-table-wrap"><table class="price-table">
+          <thead><tr>${tierNames.map((n) => `<th>${esc(n)}</th>`).join('')}</tr></thead>
+          <tbody><tr>${[0, 1, 2, 3].map((t) => `<td><input type="number" min="0" step="500" class="pr-input wide" data-pr-bano="${t}" value="${bano[t]}"></td>`).join('')}</tr></tbody>
+        </table></div>
+        <div class="chip-row">
+          ${[0, 1, 2, 3].map((t) => `<span class="chip pr-derived">${esc(tierNames[t])}: con corte ${CATALOG.cop(Math.round(bano[t] * 1.15 / 500) * 500)} · corte según raza ${CATALOG.cop(Math.round(bano[t] * 1.35 / 500) * 500)}</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Limpieza dental — precio base (trimestral / semestral)</h2>
+        <p class="empty" style="padding-top:0;margin-bottom:6px;">El plan mensual recurrente sale con 18% de descuento sobre este número, automático.</p>
+        <div class="price-table-wrap"><table class="price-table">
+          <thead><tr>${tierNames.map((n) => `<th>${esc(n)}</th>`).join('')}</tr></thead>
+          <tbody><tr>${[0, 1, 2, 3].map((t) => `<td><input type="number" min="0" step="500" class="pr-input wide" data-pr-dental="${t}" value="${dental[t]}"></td>`).join('')}</tr></tbody>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <h2>Vacunación anual (prorrateada por mes)</h2>
+        <p class="empty" style="padding-top:0;margin-bottom:6px;">Mismo valor para los 4 tamaños — la dosis no cambia con el tamaño del perro.</p>
+        <div class="field"><label>Precio mensual</label><input type="number" min="0" step="100" class="pr-input wide" data-pr-vacunas="all" value="${vacunaVal}"></div>
+      </div>
+
+      <div class="card">
+        <h2>Alimentación BARF — combos (solo lectura por ahora)</h2>
+        <div class="price-table-wrap"><table class="price-table">
+          <thead><tr><th class="row-label">Combo</th><th>Precio/mes</th></tr></thead>
+          <tbody>${CATALOG.BARF_OPTIONS.map((o) => `<tr><td class="row-label">${esc(o.label)}</td><td class="pr-derived">${CATALOG.cop(CATALOG.BARF[o.val])}</td></tr>`).join('')}</tbody>
+        </table></div>
+      </div>
+
+      <button class="btn" data-action="save-pricing">Guardar todos los precios</button>
+    </div>`;
+  }
+
+  function renderConfiguracion() {
     const biz = state.settings.businessInfo || {};
 
     const defaultTexts = (state.settingsDefaults && state.settingsDefaults.botTexts) || {};
     const texts = Object.assign({}, defaultTexts, state.settings.botTexts || {});
 
     return `
-    <div class="card">
-      <h2>Comisión ALLPETZ por servicio</h2>
-      <p class="empty" style="padding-top:0;margin-bottom:10px;">Porcentaje que se queda ALLPETZ de cada servicio; el resto es la utilidad del colaborador.</p>
-      ${SERVICE_IDS.map((id) => `
-        <div class="field">
-          <label>${esc(serviceLabel(id))}</label>
-          <input type="number" min="0" max="100" step="1" data-commission="${id}" value="${Math.round((commission[id] != null ? commission[id] : 0.20) * 100)}"> %
-        </div>
-      `).join('')}
-      <button class="btn small" data-action="save-commission">Guardar comisión</button>
-    </div>
-
     <div class="card">
       <h2>Datos de la empresa</h2>
       <div class="field"><label>Nombre</label><input type="text" data-biz="name" value="${esc(biz.name || 'ALLPETZ')}"></div>
@@ -429,6 +632,7 @@
       : state.activeTab === 'clientes' ? renderClientes()
       : state.activeTab === 'reservas' ? renderReservas()
       : state.activeTab === 'financiero' ? renderFinanciero()
+      : state.activeTab === 'precios' ? renderPrecios()
       : state.activeTab === 'configuracion' ? renderConfiguracion()
       : renderResumen();
     return `
@@ -515,21 +719,6 @@
       return;
     }
 
-    if (action === 'save-commission') {
-      const card = t.closest('.card');
-      const value = {};
-      card.querySelectorAll('[data-commission]').forEach((inp) => {
-        value[inp.getAttribute('data-commission')] = Math.max(0, Math.min(100, Number(inp.value) || 0)) / 100;
-      });
-      try {
-        await api('/admin/settings/commission', { method: 'PUT', body: JSON.stringify({ value }) });
-        showToast('Comisión guardada ✅');
-        await loadSettings();
-        await loadFinancial();
-      } catch (err) { showToast(err.message); }
-      return;
-    }
-
     if (action === 'save-business-info') {
       const card = t.closest('.card');
       const value = {};
@@ -550,6 +739,18 @@
         await api('/admin/settings/bot_texts', { method: 'PUT', body: JSON.stringify({ value }) });
         showToast('Textos guardados ✅');
         await loadSettings();
+      } catch (err) { showToast(err.message); }
+      return;
+    }
+
+    if (action === 'save-pricing') {
+      const draft = applyDraftPricing(); // ya está aplicado en caliente a este navegador; ahora lo persistimos
+      try {
+        await api('/admin/settings/commission', { method: 'PUT', body: JSON.stringify({ value: draft.commission }) });
+        await api('/admin/settings/pricing', { method: 'PUT', body: JSON.stringify({ value: draft.pricing }) });
+        showToast('Precios guardados ✅ — ya están activos para todos los clientes.');
+        await loadSettings();
+        await loadFinancial();
       } catch (err) { showToast(err.message); }
       return;
     }
@@ -575,6 +776,13 @@
       await loadBookings();
       return;
     }
+    if (e.target.matches('[data-calc]')) {
+      const key = e.target.getAttribute('data-calc');
+      const NUMERIC = { weightIdx: 1, paseoFreq: 1, banoFreq: 1, barfEntregas: 1 };
+      const val = NUMERIC[key] ? Number(e.target.value) : e.target.value;
+      setState({ pricingCalc: Object.assign({}, state.pricingCalc, { [key]: val }) });
+      return;
+    }
   });
 
   let searchTimer = null;
@@ -583,6 +791,12 @@
       state.customerSearch = e.target.value;
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => { loadCustomers(); }, 350);
+      return;
+    }
+    // Precios: recalcula solo el desglose, sin re-renderizar el formulario
+    // completo — así no se pierde el foco mientras se escribe un número.
+    if (e.target.closest('#precios-panel') && (e.target.hasAttribute('data-pr') || e.target.hasAttribute('data-pr-bano') || e.target.hasAttribute('data-pr-dental') || e.target.hasAttribute('data-pr-vacunas') || e.target.hasAttribute('data-pr-paseo') || e.target.hasAttribute('data-pr-barfentrega') || e.target.hasAttribute('data-commission'))) {
+      refreshBreakdown();
     }
   });
 
