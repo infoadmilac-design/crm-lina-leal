@@ -249,6 +249,24 @@
   // por eso vive dentro de un contenedor mutable.
   const BARF_ENTREGA_FEE_STATE = { value: BARF_ENTREGA_FEE };
 
+  /** Descripción corta y legible de cómo está configurado un servicio (sin
+      el precio) — para mostrar en listas de WhatsApp donde solo cabe una
+      línea, tanto al armar/editar un plan como al describir un paquete. */
+  function serviceDetailLabel(id, weightIdx, opts) {
+    opts = opts || {};
+    if (id === 'bano') {
+      const v = BANO_VARIANTS[opts.banoVariant || 'general'];
+      return `${v.label} · ${opts.banoFreq || 1}×/mes`;
+    }
+    if (id === 'paseo') return `${opts.paseoFreq || 1}×/semana`;
+    if (id === 'barf') {
+      const opt = BARF_OPTIONS.find((o) => o.val === (opts.barfKey || 'pollo-250'));
+      return `${opt ? opt.label : ''} · ${opts.barfEntregas === 2 ? '2 entregas/mes' : '1 entrega/mes'}`;
+    }
+    if (id === 'dental') return DENTAL_FREQ_OPTIONS[opts.dentalFreq || 'trimestral'].label;
+    return ROW_META[id].sub;
+  }
+
   /** Precio de un ítem del armador para un peso dado. weightIdx: 0..3. */
   function price(id, weightIdx, opts) {
     opts = opts || {};
@@ -329,7 +347,7 @@
     PR, BARF, BARF_DEFAULT, BARF_OPTIONS, BARF_ENTREGA_FEE_STATE, TIER, WEIGHTS, ROW_META, BUILDER_ROW_IDS, SERVICES, cop, fmt, price,
     BANO_VARIANTS, BANO_VARIANT_ORDER, BANO_FREQ_OPTIONS, BANO_FREQ_MULT, banoVariantPrice, banoVisitPrice,
     PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD, paseoPrice, paseoFreqBase,
-    DENTAL_FREQ_OPTIONS, DENTAL_FREQ_ORDER, dentalPrice,
+    DENTAL_FREQ_OPTIONS, DENTAL_FREQ_ORDER, dentalPrice, serviceDetailLabel,
     SERVICE_DURATION_MIN, durationMinutes,
     COMMISSION_PCT, splitEarnings, priceBreakdown, transporteFor, CONFIG,
     PACKAGES, PACKAGE_ORDER, packageTotal, packageALaCarteTotal, round500,

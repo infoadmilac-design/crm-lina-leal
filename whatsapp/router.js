@@ -133,7 +133,7 @@ function handleOnboardingBreed(to, session, incoming) {
     session.petBreed = /^omitir$/i.test(t) ? null : t;
     session.onboarded = true;
     session.step = 'packages';
-    return [M.packagesList(to, session.petName, session.weightIdx)];
+    return [M.packagesDetail(to, session.petName, session.weightIdx), M.packagesList(to, session.petName, session.weightIdx)];
   }
   return [M.askBreed(to, session.petName)];
 }
@@ -147,7 +147,7 @@ function handlePackages(to, session, incoming) {
     if (pkgId === 'custom') {
       session.returnTo = 'bulk';
       session.step = 'plan_services';
-      return [M.servicesChecklist(to, session.weightIdx, session.services)];
+      return [M.servicesChecklist(to, session)];
     }
     if (applyPackage(session, pkgId)) {
       session.step = 'plan_summary';
@@ -167,7 +167,7 @@ function handleMenu(to, session, incoming) {
       return [M.catalogIntro(to), M.catalogList(to)];
     case 'menu_plan':
       session.step = 'packages';
-      return [M.packagesList(to, session.petName, session.weightIdx)];
+      return [M.packagesDetail(to, session.petName, session.weightIdx), M.packagesList(to, session.petName, session.weightIdx)];
     case 'menu_servicios':
       session.step = 'servicios';
       return [M.upcomingList(to, session.bookings)];
@@ -235,12 +235,7 @@ function startServiceConfig(to, session, builderId) {
 
 function finishServiceConfig(to, session, builderId) {
   if (session.returnTo === 'bulk') {
-    if (builderId === 'paseo' && session.services.barf) {
-      return startServiceConfig(to, session, 'barf');
-    }
-    session.step = 'plan_summary';
-    const { lines, total } = ticketFor(session);
-    return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
+    return advanceBulkConfig(to, session, builderId);
   }
   // Vía Catálogo: el cliente propone día y hora para este servicio antes de
   // seguir — el colaborador solo acepta o rechaza (ver handleCatalogAdded /
@@ -412,29 +407,44 @@ function handlePlanWeight(to, session, incoming) {
     session.weightIdx = idx;
     session.barfKey = CATALOG.BARF_DEFAULT[idx];
     session.step = 'plan_services';
-    return [M.servicesChecklist(to, session.weightIdx, session.services)];
+    return [M.servicesChecklist(to, session)];
   }
   return [M.weightPicker(to)];
 }
 
 function handlePlanServices(to, session, incoming) {
-  if (incoming.type !== 'interactive') return [M.servicesChecklist(to, session.weightIdx, session.services)];
+  if (incoming.type !== 'interactive') return [M.servicesChecklist(to, session)];
   if (incoming.id.startsWith('toggle_')) {
     const id = incoming.id.slice('toggle_'.length);
     session.services[id] = !session.services[id];
     session.packageDiscountPct = null;
-    return [M.servicesChecklist(to, session.weightIdx, session.services)];
+    return [M.servicesChecklist(to, session)];
   }
   if (incoming.id === 'services_continue') {
     return advancePastServices(to, session);
   }
-  return [M.servicesChecklist(to, session.weightIdx, session.services)];
+  return [M.servicesChecklist(to, session)];
 }
 
 function advancePastServices(to, session) {
   session.returnTo = 'bulk';
-  if (session.services.paseo) return startServiceConfig(to, session, 'paseo');
-  if (session.services.barf) return startServiceConfig(to, session, 'barf');
+  return advanceBulkConfig(to, session, null);
+}
+
+// Orden en el que se pregunta cada servicio activo al armar/editar un plan
+// por lotes — vacunas no tiene nada que preguntar, no aparece aquí.
+const BULK_CONFIG_ORDER = ['bano', 'paseo', 'barf', 'dental'];
+
+/** Avanza al siguiente servicio activo sin configurar todavía (después de
+    `justConfiguredId`, o desde el principio si es null) — así "Continuar" y
+    "Editar" en el resumen recorren baño/paseo/BARF/dental por igual, no
+    solo paseo y BARF como antes. */
+function advanceBulkConfig(to, session, justConfiguredId) {
+  const startIdx = justConfiguredId ? BULK_CONFIG_ORDER.indexOf(justConfiguredId) + 1 : 0;
+  for (let i = startIdx; i < BULK_CONFIG_ORDER.length; i++) {
+    const id = BULK_CONFIG_ORDER[i];
+    if (session.services[id]) return startServiceConfig(to, session, id);
+  }
   session.step = 'plan_summary';
   const { lines, total } = ticketFor(session);
   return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];
@@ -452,7 +462,7 @@ function handlePlanSummary(to, session, incoming) {
   }
   if (incoming.id === 'plan_edit') {
     session.step = 'plan_services';
-    return [M.servicesChecklist(to, session.weightIdx, session.services)];
+    return [M.servicesChecklist(to, session)];
   }
   const { lines, total } = ticketFor(session);
   return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];

@@ -37,8 +37,10 @@ out = step(to, s, { type: 'text', text: 'Labrador' }, 'da la raza');
 assert.equal(s.petBreed, 'Labrador');
 assert.equal(s.onboarded, true, 'el onboarding debe quedar completo');
 assert.equal(s.step, 'packages', 'apenas termina el onboarding debe ofrecer los 3 paquetes');
-assert.ok(out[0].interactive.body.text.includes('Firulais'), 'la oferta de paquetes debe saludar con el nombre de la mascota');
-assert.equal(out[0].interactive.action.sections[0].rows.length, 4, 'debe mostrar 3 paquetes + armar plan propio');
+assert.equal(out.length, 2, 'debe mandar la descripción de los planes (texto) y luego la lista para elegir');
+assert.ok(out[0].text.body.includes('Firulais'), 'la descripción de los planes debe saludar con el nombre de la mascota');
+assert.ok(out[0].text.body.includes('Full Care') && out[0].text.body.includes('Activo') && out[0].text.body.includes('Esencial'), 'debe describir los 3 planes con nombre');
+assert.equal(out[1].interactive.action.sections[0].rows.length, 4, 'debe mostrar 3 paquetes + armar plan propio');
 
 // Un "hola" luego de onboarded debe ir directo al menú, no repetir onboarding.
 out = step(to, s, { type: 'text', text: 'hola' }, 'saluda de nuevo, ya onboarded');
@@ -176,4 +178,44 @@ out = step(to2, s2, { type: 'interactive', id: 'plan_confirm' }, '[paquetes] con
 assert.equal(s2.step, 'menu');
 assert.ok(s2.planConfirmedAt, 'el plan armado por paquete también debe quedar confirmado');
 
-console.log('\n✅ Todas las verificaciones pasaron — el nuevo flujo (onboarding + paquetes inteligentes + catálogo configurando cada servicio al vuelo) funciona de punta a punta.');
+// ---- Editar un paquete: "Editar" debe recorrer TODOS los servicios activos
+// (antes se saltaba baño y dental, solo preguntaba paseo y BARF) ----
+const to3 = '573001112255';
+const s3 = session.resetSession(to3);
+step(to3, s3, { type: 'text', text: 'hola' }, '[editar] primer contacto');
+step(to3, s3, { type: 'text', text: 'Nala' }, '[editar] da el nombre');
+step(to3, s3, { type: 'interactive', id: 'weight_2' }, '[editar] elige peso Mediano');
+step(to3, s3, { type: 'text', text: 'omitir' }, '[editar] omite raza');
+step(to3, s3, { type: 'interactive', id: 'pkg_fullcare' }, '[editar] elige Full Care (incluye baño, paseo, BARF y dental)');
+assert.equal(s3.step, 'plan_summary');
+
+out = step(to3, s3, { type: 'interactive', id: 'plan_edit' }, '[editar] toca "Editar"');
+assert.equal(s3.step, 'plan_services', 'Editar debe llevar al checklist de servicios');
+const banoRow = out[0].interactive.action.sections[0].rows.find((r) => r.id === 'toggle_bano');
+assert.ok(banoRow.description.includes('corte según raza') && banoRow.description.includes('2×/mes'), 'el checklist debe mostrar el detalle REAL ya configurado, no el precio por defecto');
+
+out = step(to3, s3, { type: 'interactive', id: 'services_continue' }, '[editar] continuar (debe re-preguntar cada servicio activo)');
+assert.equal(s3.step, 'catalog_bano_variant', 'debe empezar por baño, no saltárselo');
+assert.equal(s3.packageDiscountPct, null, 'editar debe quitar el descuento de paquete cerrado');
+
+out = step(to3, s3, { type: 'interactive', id: 'bano_general' }, '[editar] cambia el baño a general');
+out = step(to3, s3, { type: 'interactive', id: 'banofreq_1' }, '[editar] cambia a 1×/mes');
+out = step(to3, s3, { type: 'text', text: 'ninguna' }, '[editar] sin notas');
+assert.equal(s3.step, 'catalog_paseo_freq', 'tras baño debe seguir con paseo (antes se saltaba directo a BARF)');
+
+out = step(to3, s3, { type: 'interactive', id: 'paseofreq_3' }, '[editar] baja paseos a 3×/semana');
+out = step(to3, s3, { type: 'interactive', id: 'paseodur_corta' }, '[editar] duración corta');
+out = step(to3, s3, { type: 'interactive', id: 'paseomod_solo' }, '[editar] modalidad individual');
+assert.equal(s3.step, 'catalog_barf_variant', 'tras paseo debe seguir con BARF');
+
+out = step(to3, s3, { type: 'interactive', id: 'barf_pollo-500' }, '[editar] BARF pollo 500g');
+out = step(to3, s3, { type: 'interactive', id: 'barfentrega_1' }, '[editar] 1 entrega');
+assert.equal(s3.step, 'catalog_dental_freq', 'tras BARF debe seguir con dental — antes esto nunca pasaba en el armador por lotes');
+
+out = step(to3, s3, { type: 'interactive', id: 'dentalfreq_mensual' }, '[editar] dental mensual');
+assert.equal(s3.step, 'plan_summary', 'al terminar de editar todo debe volver al resumen');
+assert.equal(s3.banoVariant, 'general');
+assert.equal(s3.paseoFreq, 3);
+assert.equal(s3.dentalFreq, 'mensual');
+
+console.log('\n✅ Todas las verificaciones pasaron — el nuevo flujo (onboarding + paquetes inteligentes con descripción y edición real + catálogo configurando cada servicio al vuelo) funciona de punta a punta.');
