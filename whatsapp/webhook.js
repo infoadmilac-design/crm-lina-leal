@@ -9,9 +9,16 @@
 
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const session = require('./session.js');
 const router = require('./router.js');
 const { createReminderScheduler } = require('./reminders.js');
+const db = require('./db.js');
+const { createApiRouter } = require('./api.js');
+const { createCollabApiRouter } = require('./collab-api.js');
+const { createAdminApiRouter } = require('./admin-api.js');
+const M = require('./messages.js');
+const CATALOG = require('../catalog.js');
 
 const {
   VERIFY_TOKEN = 'allpetz-dev-token',
@@ -23,6 +30,7 @@ const {
 } = process.env;
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 const sentLog = [];
@@ -60,10 +68,51 @@ function normalizeIncoming(message) {
   return { type: 'text', text: '' };
 }
 
-async function handleTurn(from, incoming) {
+/** Guarda en la base de datos los dos momentos de negocio que le importan al
+    resto del sistema (app + colaboradores) — el motor de conversación
+    (router.js) sigue siendo puro y no sabe nada de esto. */
+async function persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt, hadRescheduleProposedAt) {
+  if (!db.enabled) return;
+  try {
+    if (!wasOnboarded && s.onboarded) {
+      await db.upsertCustomerAndPet(from, {
+        ownerName: s.ownerName,
+        petName: s.petName,
+        petBreed: s.petBreed,
+        weightIdx: s.weightIdx,
+      });
+    }
+    if (!hadPlanConfirmedAt && s.planConfirmedAt) {
+      const activeIds = session.activeServiceIds(s);
+      const opts = session.priceOpts(s);
+      const petId = await db.latestPetId(from);
+      const lines = activeIds.map((serviceId) => ({
+        serviceId,
+        label: CATALOG.ROW_META[serviceId].label,
+        priceValue: CATALOG.price(serviceId, s.weightIdx, opts),
+        proposedAt: (s.proposedSlots && s.proposedSlots[serviceId]) || null,
+      }));
+      await db.createBookingsForPlan(from, { petId, lines, services: activeIds, weightIdx: s.weightIdx, priceOpts: opts, source: 'whatsapp' });
+    }
+    if (!hadRescheduleProposedAt && s.rescheduleProposedAt) {
+      await db.updateProposedTime(s.reschedulingBookingId, s.rescheduleProposedAt);
+      s.reschedulingBookingId = null;
+      s.rescheduleProposedAt = null;
+    }
+  } catch (err) {
+    console.error('Error guardando en base de datos:', err);
+  }
+}
+
+async function handleTurn(from, incoming, profileName) {
   const s = session.getSession(from);
+  if (profileName && !s.ownerName) s.ownerName = profileName;
+  const wasOnboarded = s.onboarded;
+  const hadPlanConfirmedAt = s.planConfirmedAt;
+  const hadRescheduleProposedAt = s.rescheduleProposedAt;
   const outgoing = router.handle(from, s, incoming);
   for (const payload of outgoing) await send(payload);
+  await persistBusinessEvents(from, s, wasOnboarded, hadPlanConfirmedAt, hadRescheduleProposedAt);
   return outgoing;
 }
 
@@ -84,7 +133,8 @@ app.post('/webhook', async (req, res) => {
     const value = req.body?.entry?.[0]?.changes?.[0]?.value;
     const message = value?.messages?.[0];
     if (!message) return; // status updates (entregado/leído) no traen "messages"
-    await handleTurn(message.from, normalizeIncoming(message));
+    const profileName = value?.contacts?.[0]?.profile?.name || null;
+    await handleTurn(message.from, normalizeIncoming(message), profileName);
   } catch (err) {
     console.error('Error procesando webhook:', err);
   }
@@ -97,8 +147,13 @@ app.post('/dev/simulate', async (req, res) => {
   const { from, text, id } = req.body || {};
   if (!from) return res.status(400).json({ error: 'falta "from" (cualquier número de prueba, ej. 573001112233)' });
   const incoming = id ? { type: 'interactive', id } : { type: 'text', text: text || 'hola' };
-  const outgoing = await handleTurn(from, incoming);
-  res.json({ dryRun: !!DRY_RUN, session: session.getSession(from), outgoing });
+  try {
+    const outgoing = await handleTurn(from, incoming);
+    res.json({ dryRun: !!DRY_RUN, session: session.getSession(from), outgoing });
+  } catch (err) {
+    console.error('Error en /dev/simulate:', err);
+    res.status(500).json({ error: 'error interno' });
+  }
 });
 
 app.post('/dev/reset', (req, res) => {
@@ -109,9 +164,25 @@ app.post('/dev/reset', (req, res) => {
 
 app.get('/dev/sent', (req, res) => res.json(sentLog));
 
+/* ---- API para la app (login por código + datos del cliente) ---- */
+app.use('/api', createApiRouter({ send, textMessage: M.textMessage }));
+
+/* ---- API para el panel de colaboradores (disponibilidad + asignación) ---- */
+app.use('/api/collab', createCollabApiRouter({ send, textMessage: M.textMessage }));
+
+/* ---- API para el panel de administrador ---- */
+app.use('/api/admin', createAdminApiRouter());
+
 const scheduler = createReminderScheduler(send);
 app.get('/dev/reminders/pending', (req, res) => res.json({ pending: scheduler.pending() }));
 
+// Comisión/textos que el admin haya guardado (whatsapp/admin-api.js) — se
+// aplican una vez al arrancar; después de eso, admin-api.js los actualiza
+// en caliente en este mismo proceso cada vez que el admin guarda un cambio.
+db.getSettings()
+  .then((settings) => { CATALOG.setOverrides(settings); M.setOverrides(settings); })
+  .catch((err) => console.error('Error cargando configuración:', err));
+
 app.listen(PORT, () => {
-  console.log(`ALLPETZ WhatsApp bot escuchando en :${PORT}${DRY_RUN ? '  [DRY_RUN: no se llama a Meta]' : ''}`);
+  console.log(`ALLPETZ WhatsApp bot escuchando en :${PORT}${DRY_RUN ? '  [DRY_RUN: no se llama a Meta]' : ''}${db.enabled ? '' : '  [DB: sin DATABASE_URL, solo memoria]'}`);
 });

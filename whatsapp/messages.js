@@ -7,7 +7,12 @@
 'use strict';
 
 const CATALOG = require('../catalog.js');
-const { SERVICES, WEIGHTS, ROW_META, BUILDER_ROW_IDS, BARF_OPTIONS, TIER, cop, fmt, price } = CATALOG;
+const Session = require('./session.js');
+const {
+  SERVICES, WEIGHTS, ROW_META, BUILDER_ROW_IDS, BARF_OPTIONS, TIER, cop, fmt, price,
+  BANO_VARIANT_ORDER, PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD,
+} = CATALOG;
+const { DAY_NAMES, DAY_NAMES_SHORT, FRANJA_LABEL } = Session;
 
 function base(to) {
   return { messaging_product: 'whatsapp', to, recipient_type: 'individual' };
@@ -15,6 +20,10 @@ function base(to) {
 
 function textMessage(to, body) {
   return { ...base(to), type: 'text', text: { body, preview_url: false } };
+}
+
+function imageMessage(to, link, caption) {
+  return { ...base(to), type: 'image', image: { link, ...(caption ? { caption } : {}) } };
 }
 
 function listMessage(to, { header, body, footer, buttonLabel, sections }) {
@@ -31,12 +40,13 @@ function listMessage(to, { header, body, footer, buttonLabel, sections }) {
   };
 }
 
-function buttonMessage(to, { body, footer, buttons }) {
+function buttonMessage(to, { header, body, footer, buttons }) {
   return {
     ...base(to),
     type: 'interactive',
     interactive: {
       type: 'button',
+      ...(header ? { header } : {}),
       body: { text: body },
       ...(footer ? { footer: { text: footer } } : {}),
       action: {
@@ -44,6 +54,44 @@ function buttonMessage(to, { body, footer, buttons }) {
       },
     },
   };
+}
+
+/* ---- 0. Onboarding: bienvenida emocional + nombre, peso y raza ---- */
+/* Textos editables desde el panel de administrador (Configuración > Textos
+   del bot) — solo estos dos, por ser mensajes de texto simple sin botones
+   ni listas (ver el plan: reescribir los demás es más arriesgado). Si no
+   hay override guardado, se usa el texto por defecto de siempre. */
+const DEFAULT_BOT_TEXTS = {
+  welcome:
+    '¡Guau, hola! 🐾 Soy la voz (bueno, la patita escritora) de ALLPETZ: el ecosistema que junta en un solo lugar TODO lo que tu mejor amigo de cuatro patas va a necesitar — paseos, baño, comida rica, vacunas, dientes limpios, entrenamiento, transporte, hotel y hasta seguro.\n\n' +
+    'Nada de andar buscando 5 contactos distintos cada vez que se te ocurre algo. En unos minutos armamos el plan perfecto según su tamaño, y listo: tú te olvidas de estar pendiente, porque nosotros te recordamos cada cita a tiempo. Menos preocupaciones para ti, más cariño para tu peludo 🐶✨',
+  humanHandoff: '🙋 Te conecto con el equipo de ALLPETZ, en un momento te escriben por aquí mismo.',
+};
+const BOT_TEXTS = Object.assign({}, DEFAULT_BOT_TEXTS);
+
+/** Aplica los textos guardados por el admin — mismo patrón que
+    catalog.js::setOverrides(), síncrono/sin red. */
+function setOverrides(overrides) {
+  if (overrides && overrides.botTexts) Object.assign(BOT_TEXTS, overrides.botTexts);
+}
+
+// Pieza oficial de marca — la misma que se usa en el mockup del ecosistema.
+const WELCOME_PHOTO = 'https://infoadmilac-design.github.io/crm-lina-leal/images/portada1.jpg';
+
+function welcomePhoto(to) {
+  return imageMessage(to, WELCOME_PHOTO, 'ALLPETZ 🐾 — Membresía Integral de Cuidado Canino');
+}
+
+function welcomeIntro(to) {
+  return textMessage(to, BOT_TEXTS.welcome);
+}
+
+function askPetName(to) {
+  return textMessage(to, 'Para empezar, cuéntame: ¿cómo se llama tu mascota?');
+}
+
+function askBreed(to, petName) {
+  return textMessage(to, `Perfecto 🐕 ¿Qué raza es ${petName} (o mezcla)? Escribe "omitir" si prefieres no decirlo.`);
 }
 
 /* ---- 1. Menú principal ---- */
@@ -65,7 +113,14 @@ function mainMenu(to, userName) {
   });
 }
 
-/* ---- 2a. Catálogo (8 servicios) ---- */
+/* ---- 2a. Catálogo (9 servicios) ---- */
+// Foto genérica de banco de imágenes, servida como miniatura <1MB (no es una foto real de ALLPETZ).
+const CATALOG_HERO_PHOTO = 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Girl_walking_dog_001.jpg/960px-Girl_walking_dog_001.jpg';
+
+function catalogIntro(to) {
+  return imageMessage(to, CATALOG_HERO_PHOTO, 'ALLPETZ 🐾 — cuidado para tu mascota');
+}
+
 function catalogList(to) {
   return listMessage(to, {
     body: 'Elige y combina 🐾',
@@ -83,13 +138,18 @@ function catalogList(to) {
   });
 }
 
-function catalogDetail(to, service) {
+function catalogDetail(to, service, weightIdx) {
   const inBuilder = !!service.map;
+  const priceLine = inBuilder && weightIdx != null
+    ? `\n\nDesde *${fmt(price(service.map, weightIdx, {}))}* para tu mascota.`
+    : '';
+  const body = `${service.emoji} *${service.title}*\n\n${service.pitch || service.desc}${priceLine}`;
   return buttonMessage(to, {
-    body: `${service.emoji} *${service.title}*\n${service.desc}`,
+    ...(service.photo ? { header: { type: 'image', image: { link: service.photo } } } : {}),
+    body,
     buttons: inBuilder
       ? [
-          { id: `add_${service.map}`, title: 'Agregar a mi plan' },
+          { id: `add_${service.map}`, title: 'Empezar a configurar' },
           { id: 'back_menu', title: '‹ Volver al menú' },
         ]
       : [
@@ -99,7 +159,7 @@ function catalogDetail(to, service) {
   });
 }
 
-/* ---- 2b. Armar plan: paso 1, peso ---- */
+/* ---- 2b. Armar plan: paso 1, peso (también usado en onboarding) ---- */
 function weightPicker(to) {
   return listMessage(to, {
     body: '¿Cuánto pesa tu mascota?',
@@ -117,10 +177,20 @@ function weightPicker(to) {
   });
 }
 
-/* ---- paso 2, checklist de servicios (multi-select simulado) ---- */
-function servicesChecklist(to, weightIdx, selected) {
+/* ---- paso 2, checklist de servicios (multi-select simulado) ----
+   Recibe la sesión completa (no solo weightIdx + on/off) para poder mostrar
+   el precio y el detalle REAL de cada servicio ya configurado — antes
+   mostraba siempre el precio por defecto, sin reflejar lo que el cliente
+   ya había elegido (frecuencia, variante, etc). */
+function servicesChecklist(to, session) {
+  const opts = {
+    banoVariant: session.banoVariant, banoFreq: session.banoFreq,
+    paseoFreq: session.paseoFreq, paseoDuration: session.paseoDuration, paseoModalidad: session.paseoModalidad,
+    barfKey: session.barfKey, barfEntregas: session.barfEntregas,
+    dentalFreq: session.dentalFreq,
+  };
   return listMessage(to, {
-    body: '¿Qué incluye su plan? Toca una fila para activarla o desactivarla.',
+    body: '¿Qué incluye su plan? Toca una fila para activarla o desactivarla. "Continuar" te deja ajustar la frecuencia de cada una antes del resumen.',
     buttonLabel: 'Ver servicios',
     sections: [
       {
@@ -128,27 +198,155 @@ function servicesChecklist(to, weightIdx, selected) {
         rows: [
           ...BUILDER_ROW_IDS.map((id) => {
             const row = ROW_META[id];
-            const on = !!selected[id];
+            const on = !!session.services[id];
+            const p = fmt(price(id, session.weightIdx, opts));
+            const detail = on ? CATALOG.serviceDetailLabel(id, session.weightIdx, opts) : `Desde`;
             return {
               id: `toggle_${id}`,
               title: `${on ? '✅' : '◻️'} ${row.emoji} ${row.label}`,
-              description: fmt(price(id, weightIdx, {})),
+              description: `${detail} · ${p}`,
             };
           }),
-          { id: 'services_continue', title: '▶️ Continuar', description: 'Ir al resumen' },
+          { id: 'services_continue', title: '▶️ Continuar', description: 'Ajustar cada una y ver el resumen' },
         ],
       },
     ],
   });
 }
 
-/* ---- variante de paseo (2 botones) ---- */
-function paseoVariantButtons(to) {
+/* ---- baño: subtipo + notas ---- */
+const BANO_ROW_LABEL = {
+  general: 'Baño general',
+  corte: 'Baño y corte',
+  corte_raza: 'Corte según raza',
+};
+
+/* ---- Paquetes inteligentes (se ofrecen apenas se conoce la mascota) ----
+   WhatsApp no tiene "tarjetas": la aproximación más cercana es un mensaje de
+   texto con un bloque bien separado por plan (nombre, qué incluye sin
+   ambigüedad, precio, ahorro) — packagesDetail() — seguido de la lista para
+   elegir (packagesList()). Así el cliente entiende qué está comparando
+   antes de tocar nada. */
+function packagesDetail(to, petName, weightIdx) {
+  const intro = `¡Hola${petName ? ' ' + petName : ''}! 🐾 Así se ven los 3 planes que armé según su tamaño:\n\n`;
+  const blocks = CATALOG.PACKAGE_ORDER.map((id) => {
+    const pkg = CATALOG.PACKAGES[id];
+    const opts = pkg.opts(weightIdx);
+    const lines = pkg.servicesList.map((sid) => {
+      const meta = ROW_META[sid];
+      return `${meta.emoji} ${meta.label} — ${CATALOG.serviceDetailLabel(sid, weightIdx, opts)}`;
+    }).join('\n');
+    const total = CATALOG.packageTotal(id, weightIdx);
+    const aLaCarte = CATALOG.packageALaCarteTotal(id, weightIdx);
+    const savings = aLaCarte - total;
+    const savingsLine = savings > 0 ? `\n💰 Ahorras ${fmt(savings)}/mes vs. armarlo por separado` : '';
+    return `*${pkg.label}* — ${pkg.badge}\n_${pkg.tagline}_\n${lines}\n*Total: ${fmt(total)}/mes*${savingsLine}`;
+  });
+  return textMessage(to, intro + blocks.join('\n\n') + '\n\n👇 Elige uno, o toca "Arma tu propio plan" para armarlo tú mismo.');
+}
+
+function packagesList(to, petName, weightIdx) {
+  const rows = CATALOG.PACKAGE_ORDER.map((id) => {
+    const pkg = CATALOG.PACKAGES[id];
+    const total = CATALOG.packageTotal(id, weightIdx);
+    return { id: `pkg_${id}`, title: pkg.label, description: `${fmt(total)}/mes · ${pkg.badge}`.slice(0, 72) };
+  });
+  rows.push({ id: 'pkg_custom', title: 'Arma tu propio plan', description: 'Elige y combina servicio por servicio' });
+  return listMessage(to, {
+    body: '¿Cuál eliges?',
+    buttonLabel: 'Ver planes',
+    sections: [{ title: 'Planes sugeridos', rows }],
+  });
+}
+
+function packageAppliedIntro(to, packageId) {
+  const pkg = CATALOG.PACKAGES[packageId];
+  return textMessage(to, `¡Buena elección! 🐾 Así quedó el plan ${pkg.label}:`);
+}
+
+function banoVariantList(to, weightIdx) {
+  return listMessage(to, {
+    body: '🛁 Baño: ¿qué tipo de servicio quieres?',
+    buttonLabel: 'Elegir tipo',
+    sections: [
+      {
+        title: 'Tipos de baño',
+        rows: BANO_VARIANT_ORDER.map((key) => ({
+          id: `bano_${key}`,
+          title: BANO_ROW_LABEL[key],
+          description: fmt(CATALOG.banoVariantPrice(weightIdx, key)),
+        })),
+      },
+    ],
+  });
+}
+
+function banoNotesPrompt(to) {
+  return textMessage(to, '¿Alguna instrucción especial para el corte (largo, estilo, zonas a evitar)? Escríbela, o responde "ninguna".');
+}
+
+function banoFrequencyButtons(to, weightIdx, variant) {
+  const p1 = fmt(CATALOG.banoVariantPrice(weightIdx, variant, 1));
+  const p2 = fmt(CATALOG.banoVariantPrice(weightIdx, variant, 2));
   return buttonMessage(to, {
-    body: '🐕 Paseos: ¿con qué frecuencia?',
+    body: `🛁 ¿Cuántas veces al mes? 1× sale ${p1}/mes · 2× sale ${p2}/mes (menos por visita).`,
     buttons: [
-      { id: 'paseo_sem', title: '1×/semana' },
-      { id: 'paseo_mes', title: '5×/semana' },
+      { id: 'banofreq_1', title: '1 vez al mes' },
+      { id: 'banofreq_2', title: '2 veces al mes' },
+    ],
+  });
+}
+
+/* ---- paseo: frecuencia + duración + modalidad ---- */
+/* ---- Paseos: el cliente elige los DÍAS (no un número) — el precio por
+   paseo baja mientras más días elige, ver catalog.js::paseoFreqBase(). ---- */
+function paseoDaysChecklist(to, session) {
+  const days = session.paseoDays || [];
+  const rows = DAY_NAMES.map((name, i) => ({
+    id: `paseoday_${i}`,
+    title: `${days.includes(i) ? '✅' : '◻️'} ${name}`,
+    description: '',
+  }));
+  rows.push({
+    id: 'paseoday_continue',
+    title: '▶️ Continuar',
+    description: days.length ? `${days.length} día${days.length === 1 ? '' : 's'} elegido${days.length === 1 ? '' : 's'} — ${fmt(CATALOG.paseoFreqBase(session.weightIdx, days.length))}/paseo` : 'Elige al menos un día',
+  });
+  const p1 = fmt(CATALOG.paseoFreqBase(session.weightIdx, 1));
+  const p7 = fmt(CATALOG.paseoFreqBase(session.weightIdx, 7));
+  const body = session.paseoScheduleOnly
+    ? `🐕 Tu plan incluye ${session.paseoFreq}×/semana de paseo — ¿qué días prefieres? (esto no cambia el precio, ya está cerrado en tu plan)`
+    : `🐕 ¿Qué días quieres que salga a pasear? Entre más días elijas, más baja el precio por cada paseo: 1 día/semana sale ${p1}/paseo, 7 días/semana baja a ${p7}/paseo.`;
+  return listMessage(to, { body, buttonLabel: 'Elegir días', sections: [{ title: 'Días de paseo', rows }] });
+}
+
+function paseoFranjaButtons(to) {
+  return buttonMessage(to, {
+    body: '⏰ ¿En qué franja prefieres los paseos?',
+    buttons: [
+      { id: 'paseofranja_manana', title: '🌅 Mañana' },
+      { id: 'paseofranja_tarde', title: '🌇 Tarde' },
+    ],
+  });
+}
+
+function paseoDurationButtons(to) {
+  return buttonMessage(to, {
+    body: '⏱️ ¿Cuánto debe durar cada paseo?',
+    buttons: [
+      { id: 'paseodur_corta', title: PASEO_DURATION.corta.label },
+      { id: 'paseodur_larga', title: '1h - 1h30' },
+    ],
+  });
+}
+
+function paseoModalidadButtons(to) {
+  return buttonMessage(to, {
+    body: '🎾 ¿Cómo prefieres el paseo: individual, en grupo pequeño con juego, o grupal?',
+    buttons: [
+      { id: 'paseomod_solo', title: 'Individual' },
+      { id: 'paseomod_juego', title: 'Con juego (máx 3)' },
+      { id: 'paseomod_grupal', title: 'Grupal (máx 8)' },
     ],
   });
 }
@@ -163,6 +361,109 @@ function barfOptionsList(to) {
         title: 'Combos',
         rows: BARF_OPTIONS.map((o) => ({ id: `barf_${o.val}`, title: o.label, description: fmt(CATALOG.BARF[o.val]) })),
       },
+    ],
+  });
+}
+
+function barfEntregaButtons(to) {
+  const fee = fmt(CATALOG.BARF_ENTREGA_FEE_STATE.value);
+  return buttonMessage(to, {
+    body: `📦 ¿Cómo prefieres la entrega? La cantidad del mes es la misma en ambos casos — 2 entregas cuesta ${fee} más por el viaje extra, pero llega más fresco.`,
+    buttons: [
+      { id: 'barfentrega_1', title: 'Todo de una vez' },
+      { id: 'barfentrega_2', title: '2 entregas' },
+    ],
+  });
+}
+
+/* ---- frecuencia de limpieza dental ---- */
+function dentalFrequencyButtons(to, weightIdx) {
+  const mensual = fmt(CATALOG.dentalPrice(weightIdx, 'mensual'));
+  const estandar = fmt(CATALOG.dentalPrice(weightIdx, 'trimestral'));
+  return buttonMessage(to, {
+    body: `🦷 ¿Cada cuánto? Mensual sale ${mensual}/visita (recurrente, más barato). Cada 3 o 6 meses sale ${estandar}/visita.`,
+    buttons: [
+      { id: 'dentalfreq_mensual', title: 'Mensual' },
+      { id: 'dentalfreq_trimestral', title: 'Cada 3 meses' },
+      { id: 'dentalfreq_semestral', title: 'Cada 6 meses' },
+    ],
+  });
+}
+
+/* ---- elegir horario: día (próximos 7, hora de Bogotá) + franja fija ----
+   router.js es puro/síncrono y no puede consultar la agenda real de los
+   colaboradores; el cliente propone día+hora "a ciegas" y la validación de
+   choque/disponibilidad ocurre cuando el colaborador acepta (ver
+   whatsapp/db.js::assignBooking). */
+const WD_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MO_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const TIME_SLOTS = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00'];
+
+function bogotaTodayStr() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+}
+function addDaysStr(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function dateStrForOffset(offset) { return addDaysStr(bogotaTodayStr(), offset); }
+function dayLabel(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  return `${WD_SHORT[d.getUTCDay()]} ${d.getUTCDate()} ${MO_SHORT[d.getUTCMonth()]}`;
+}
+function timeLabel(t) {
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h < 12 ? 'am' : 'pm';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+/** "YYYY-MM-DDTHH:MM" -> "Lun 18 ago, 10:00 am" (para mensajes de confirmación). */
+function formatSlotLabel(iso) {
+  const [datePart, timePart] = String(iso || '').split('T');
+  if (!datePart || !timePart) return '';
+  return `${dayLabel(datePart)}, ${timeLabel(timePart)}`;
+}
+
+function dayPickerList(to) {
+  const rows = [];
+  for (let i = 0; i < 7; i++) {
+    rows.push({ id: `slotday_${i}`, title: dayLabel(dateStrForOffset(i)), description: i === 0 ? 'Hoy' : '' });
+  }
+  return listMessage(to, {
+    body: '📅 Tú eliges el día — ¿cuál te queda mejor?',
+    buttonLabel: 'Elegir día',
+    sections: [{ title: 'Próximos días', rows }],
+  });
+}
+
+function timePickerList(to) {
+  return listMessage(to, {
+    body: '⏰ ¿A qué hora te queda mejor?',
+    buttonLabel: 'Elegir hora',
+    sections: [{ title: 'Horario', rows: TIME_SLOTS.map((t) => ({ id: `slottime_${t}`, title: timeLabel(t), description: '' })) }],
+  });
+}
+
+/* ---- Aviso que se manda apenas el cliente propone un horario, para
+   cualquier servicio — el cliente siempre elige, y siempre sabe qué sigue. ---- */
+function slotProposedNotice(to, serviceLabel, whenLabel) {
+  return textMessage(to, `⏳ Perfecto — en unos minutos te confirmamos si *${serviceLabel}* puede ser el *${whenLabel}* que elegiste. Si tu colaborador no puede a esa hora, te va a proponer otro horario para que tú decidas. 🐾`);
+}
+
+function paseoScheduleNotice(to, session) {
+  const days = (session.paseoDays || []).slice().sort((a, b) => a - b).map((d) => DAY_NAMES_SHORT[d]).join(', ');
+  const franja = FRANJA_LABEL[session.paseoFranja] || '';
+  return textMessage(to, `⏳ Perfecto — quedaron tus paseos para *${days}*, en la *${franja}*. En unos minutos lo confirmamos con tu colaborador, o te proponemos otro horario si hace falta. 🐾`);
+}
+
+/* ---- tras configurar un servicio: seguir agregando o ver resumen ---- */
+function serviceAddedButtons(to, summaryLine) {
+  return buttonMessage(to, {
+    body: `✅ ${summaryLine}\n¿Quieres agregar otro servicio o ver el resumen de tu plan?`,
+    buttons: [
+      { id: 'catalog_add_another', title: '➕ Agregar otro' },
+      { id: 'catalog_view_summary', title: '🧾 Ver resumen' },
     ],
   });
 }
@@ -220,20 +521,46 @@ function bookingActionButtons(to, booking) {
 
 /* ---- handoff a humano ---- */
 function humanHandoff(to) {
-  return textMessage(to, '🙋 Te conecto con el equipo de ALLPETZ, en un momento te escriben por aquí mismo.');
+  return textMessage(to, BOT_TEXTS.humanHandoff);
 }
 
 module.exports = {
   textMessage,
+  imageMessage,
   listMessage,
   buttonMessage,
+  setOverrides,
+  DEFAULT_BOT_TEXTS,
+  welcomePhoto,
+  welcomeIntro,
+  askPetName,
+  askBreed,
   mainMenu,
+  catalogIntro,
   catalogList,
   catalogDetail,
   weightPicker,
   servicesChecklist,
-  paseoVariantButtons,
+  packagesDetail,
+  packagesList,
+  packageAppliedIntro,
+  banoVariantList,
+  banoFrequencyButtons,
+  banoNotesPrompt,
+  paseoDaysChecklist,
+  paseoFranjaButtons,
+  paseoDurationButtons,
+  paseoModalidadButtons,
   barfOptionsList,
+  barfEntregaButtons,
+  dentalFrequencyButtons,
+  dateStrForOffset,
+  formatSlotLabel,
+  dayPickerList,
+  timePickerList,
+  slotProposedNotice,
+  paseoScheduleNotice,
+  serviceAddedButtons,
   ticketSummary,
   planConfirmed,
   upcomingList,

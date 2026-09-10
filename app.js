@@ -11,6 +11,21 @@
   const { PR, BARF, BARF_DEFAULT, BARF_OPTIONS, TIER, WEIGHTS, ROW_META, SERVICES } = CATALOG;
   const PET_COLORS = ['#2540FF', '#FF5A40', '#0E0E12', '#6B6B72', '#7A4DFF', '#1F9E7A'];
 
+  /* API del backend compartido con el bot de WhatsApp (ver whatsapp/api.js).
+     Cámbialo por la URL real de Render una vez desplegado, o defínelo antes
+     de cargar este script con <script>window.ALLPETZ_API_BASE = '...'</script>. */
+  const API_BASE = (window.ALLPETZ_API_BASE || 'http://localhost:3000') + '/api';
+
+  async function api(path, opts) {
+    opts = opts || {};
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    if (state.authToken) headers.Authorization = 'Bearer ' + state.authToken;
+    const res = await fetch(API_BASE + path, Object.assign({}, opts, { headers }));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  }
+
   const BRAND_SVG = `<svg viewBox="0 0 200 200" style="width:100%;height:100%;">
     <path d="M 48 48 L 60 24 L 78 48 Z" fill="#F4ECDC"></path>
     <path d="M 122 48 L 140 24 L 152 48 Z" fill="#F4ECDC"></path>
@@ -28,22 +43,22 @@
 
   function defaultState() {
     return {
-      loggedIn: true,
-      userName: 'María',
+      loggedIn: false,
+      authStep: 'phone', // 'phone' | 'code'
+      authPhone: '',
+      authToken: null,
+      userName: '',
       activeTab: 'home',
       weightIdx: 0,
       paseoVar: 'mes',
+      banoFreq: 1,
       barfKey: 'pollo-250',
+      barfEntregas: 1,
+      dentalFreq: 'trimestral',
       services: { bano: true, paseo: true, barf: true, vacunas: true, dental: true },
       petIdx: 0,
-      pets: [
-        { id: 'luna', name: 'Luna', breed: 'Golden Retriever · 3 años', badge: '✂️ Grooming hoy', color: '#2540FF' },
-        { id: 'rocky', name: 'Rocky', breed: 'Bulldog Francés · 2 años', badge: '🐕 Paseo 7 am', color: '#FF5A40' },
-      ],
-      upcoming: [
-        { id: 'u1', icon: '✂️', title: 'Grooming pro', time: 'Hoy · 4:00 pm', status: 'confirmado' },
-        { id: 'u2', icon: '🐕', title: 'Paseo matinal', time: 'Mañana · 7:00 am', status: 'agendado' },
-      ],
+      pets: [],
+      upcoming: [],
       stats: { paseos: 12, satisfaction: 98 },
       planConfirmed: false,
       planSnapshot: null,
@@ -98,21 +113,59 @@
 
   function activePet() { return state.pets[state.petIdx] || state.pets[0]; }
 
+  function priceOpts() {
+    // El armador de la app sigue ofreciendo solo 1x/5x por semana (paseoVar);
+    // se traduce al modelo de frecuencia/duración/modalidad que ya usa el bot
+    // (ver catalog.js) para que el precio calculado sea el mismo en ambos lados.
+    return {
+      banoVariant: 'general',
+      banoFreq: state.banoFreq,
+      paseoFreq: state.paseoVar === 'sem' ? 1 : 5,
+      paseoDuration: 'corta',
+      paseoModalidad: 'solo',
+      barfKey: state.barfKey,
+      barfEntregas: state.barfEntregas,
+      dentalFreq: state.dentalFreq,
+    };
+  }
   function price(id) {
-    return CATALOG.price(id, state.weightIdx, { paseoVar: state.paseoVar, barfKey: state.barfKey });
+    return CATALOG.price(id, state.weightIdx, priceOpts());
   }
   function activeRowIds() { return ['bano', 'paseo', 'barf', 'vacunas', 'dental'].filter(id => state.services[id]); }
   function computeTicketLines() {
     return activeRowIds().map(id => {
       let label = ROW_META[id].label;
-      if (id === 'paseo') label += state.paseoVar === 'sem' ? ' (1×)' : ' (5×)';
-      if (id === 'barf') label += ' · ' + (BARF_OPTIONS.find(o => o.val === state.barfKey) || {}).label;
+      if (id === 'bano') label += ` (${state.banoFreq}×/mes)`;
+      if (id === 'paseo') label += state.paseoVar === 'sem' ? ' (1×/sem)' : ' (5×/sem)';
+      if (id === 'barf') label += ' · ' + (BARF_OPTIONS.find(o => o.val === state.barfKey) || {}).label + (state.barfEntregas === 2 ? ' · 2 entregas' : '');
+      if (id === 'dental') label += ` (${CATALOG.DENTAL_FREQ_OPTIONS[state.dentalFreq].label})`;
       return { label, price: fmt(price(id)) };
     });
   }
   function computeTotal() { return activeRowIds().reduce((sum, id) => sum + price(id), 0); }
-  function selectionKey() { return JSON.stringify({ w: state.weightIdx, pv: state.paseoVar, bk: state.barfKey, sv: state.services }); }
+  function selectionKey() { return JSON.stringify({ w: state.weightIdx, pv: state.paseoVar, bf: state.banoFreq, bk: state.barfKey, be: state.barfEntregas, df: state.dentalFreq, sv: state.services }); }
   function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 9); }
+
+  /** Reemplaza mascotas/reservas de ejemplo por los datos reales que devuelve
+      GET /api/me — mismos que ve el bot de WhatsApp para ese número. */
+  function applyMe(data) {
+    state.userName = data.customer.owner_name || state.authPhone;
+    state.pets = (data.pets || []).map((p, i) => ({
+      id: p.id,
+      name: p.name,
+      breed: p.breed || '',
+      badge: '🐾',
+      color: PET_COLORS[i % PET_COLORS.length],
+    }));
+    state.petIdx = 0;
+    state.upcoming = (data.bookings || []).map((b) => ({
+      id: b.id,
+      icon: (ROW_META[b.service_id] || {}).emoji || '🐾',
+      title: (b.variant && b.variant.label) || (ROW_META[b.service_id] || {}).label || b.service_id,
+      time: b.scheduled_at ? new Date(b.scheduled_at).toLocaleString('es-CO') : 'Por confirmar',
+      status: b.status,
+    }));
+  }
 
   /* ---------------------------------------------------------------- */
   /* Toasts                                                             */
@@ -346,6 +399,22 @@
               <button class="chip-btn ${state.paseoVar === 'sem' ? 'active' : ''}" data-action="set-paseo-variant" data-val="sem">1×/sem</button>
               <button class="chip-btn ${state.paseoVar === 'mes' ? 'active' : ''}" data-action="set-paseo-variant" data-val="mes">5×/sem</button>
             </div>` : ''}
+            ${row.id === 'bano' ? `
+            <div class="variant-row">
+              <button class="chip-btn ${state.banoFreq === 1 ? 'active' : ''}" data-action="set-bano-freq" data-val="1">1×/mes</button>
+              <button class="chip-btn ${state.banoFreq === 2 ? 'active' : ''}" data-action="set-bano-freq" data-val="2">2×/mes</button>
+            </div>` : ''}
+            ${row.id === 'dental' ? `
+            <div class="variant-row">
+              <button class="chip-btn ${state.dentalFreq === 'mensual' ? 'active' : ''}" data-action="set-dental-freq" data-val="mensual">Mensual</button>
+              <button class="chip-btn ${state.dentalFreq === 'trimestral' ? 'active' : ''}" data-action="set-dental-freq" data-val="trimestral">Cada 3 meses</button>
+              <button class="chip-btn ${state.dentalFreq === 'semestral' ? 'active' : ''}" data-action="set-dental-freq" data-val="semestral">Cada 6 meses</button>
+            </div>` : ''}
+            ${row.id === 'barf' ? `
+            <div class="variant-row">
+              <button class="chip-btn ${state.barfEntregas === 1 ? 'active' : ''}" data-action="set-barf-entregas" data-val="1">1 entrega</button>
+              <button class="chip-btn ${state.barfEntregas === 2 ? 'active' : ''}" data-action="set-barf-entregas" data-val="2">2 entregas</button>
+            </div>` : ''}
           </div>`;
         }).join('')}
         <div class="barf-row">
@@ -408,24 +477,37 @@
   /* ---------------------------------------------------------------- */
 
   function renderLogin() {
+    if (state.authStep === 'code') {
+      return `
+      <div class="login-screen">
+        <div class="login-brand">
+          <div class="login-mark">${BRAND_SVG}</div>
+          <div class="login-title">ALLPETZ</div>
+          <div class="login-tag">Te escribimos por WhatsApp al ${esc(state.authPhone)} con un código de 6 dígitos.</div>
+        </div>
+        <form class="login-form" data-action="submit-code">
+          <div class="form-field">
+            <label>Código</label>
+            <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required autofocus>
+          </div>
+          <button type="submit" class="btn-primary">Entrar</button>
+          <button type="button" class="login-forgot" data-action="back-to-phone">Usar otro número</button>
+        </form>
+      </div>`;
+    }
     return `
     <div class="login-screen">
       <div class="login-brand">
         <div class="login-mark">${BRAND_SVG}</div>
         <div class="login-title">ALLPETZ</div>
-        <div class="login-tag">Bienvenida de nuevo. Inicia sesión para ver el pack de hoy.</div>
+        <div class="login-tag">Ingresa con el mismo número de WhatsApp donde hablas con nosotros.</div>
       </div>
-      <form class="login-form" data-action="submit-login">
+      <form class="login-form" data-action="submit-phone">
         <div class="form-field">
-          <label>Correo</label>
-          <input type="email" name="email" placeholder="maria@correo.com" required value="${esc(state.userName === 'María' ? 'maria@correo.com' : '')}">
+          <label>WhatsApp</label>
+          <input type="tel" name="phone" inputmode="numeric" placeholder="573001112233" required value="${esc(state.authPhone)}">
         </div>
-        <div class="form-field">
-          <label>Contraseña</label>
-          <input type="password" name="password" placeholder="••••••••" required>
-        </div>
-        <button type="submit" class="btn-primary">Iniciar sesión</button>
-        <button type="button" class="login-forgot" data-action="forgot-password">¿Olvidaste tu contraseña?</button>
+        <button type="submit" class="btn-primary">Enviar código</button>
       </form>
     </div>`;
   }
@@ -580,7 +662,7 @@
   /* Eventos (delegación)                                               */
   /* ---------------------------------------------------------------- */
 
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', async function (e) {
     const t = e.target.closest('[data-action]');
     if (!t) {
       // Click outside notif panel closes it
@@ -696,8 +778,17 @@
       case 'set-paseo-variant':
         setState({ paseoVar: t.getAttribute('data-val') });
         break;
+      case 'set-bano-freq':
+        setState({ banoFreq: Number(t.getAttribute('data-val')) });
+        break;
+      case 'set-dental-freq':
+        setState({ dentalFreq: t.getAttribute('data-val') });
+        break;
       case 'set-barf-key':
         setState({ barfKey: t.getAttribute('data-val') });
+        break;
+      case 'set-barf-entregas':
+        setState({ barfEntregas: Number(t.getAttribute('data-val')) });
         break;
       case 'confirm-plan': {
         const lines = computeTicketLines();
@@ -706,10 +797,28 @@
         state.planSnapshot = { tierLabel: TIER[state.weightIdx], total: computeTotal(), key: selectionKey() };
         save(); render();
         showToast('¡Excelente! Te contactaremos pronto 🐾');
+        if (state.authToken) {
+          try {
+            const pet = activePet();
+            await api('/bookings', {
+              method: 'POST',
+              body: JSON.stringify({
+                petId: pet ? pet.id : null,
+                services: activeRowIds(),
+                weightIdx: state.weightIdx,
+                priceOpts: priceOpts(),
+              }),
+            });
+            applyMe(await api('/me'));
+            save(); render();
+          } catch (err) {
+            showToast('No se pudo sincronizar el plan con el servidor.');
+          }
+        }
         break;
       }
-      case 'forgot-password':
-        showToast('Revisa tu correo para restablecer tu contraseña 📩');
+      case 'back-to-phone':
+        setState({ authStep: 'phone' });
         break;
       default:
         break;
@@ -723,16 +832,43 @@
     }
   });
 
-  document.addEventListener('submit', function (e) {
+  document.addEventListener('submit', async function (e) {
     const form = e.target.closest('[data-action]');
     if (!form) return;
     e.preventDefault();
     const action = form.getAttribute('data-action');
     const data = new FormData(form);
 
-    if (action === 'submit-login') {
-      setState({ loggedIn: true, activeTab: 'home' });
-      showToast(`¡Bienvenida de nuevo, ${state.userName}! 🐾`);
+    if (action === 'submit-phone') {
+      const phone = String(data.get('phone') || '').replace(/[^\d]/g, '');
+      if (!phone) { showToast('Ingresa tu número de WhatsApp.'); return; }
+      try {
+        await api('/auth/request-code', { method: 'POST', body: JSON.stringify({ phone }) });
+        setState({ authStep: 'code', authPhone: phone });
+        showToast('Te enviamos un código por WhatsApp 🐾');
+      } catch (err) {
+        showToast('No pudimos enviar el código. Intenta de nuevo.');
+      }
+      return;
+    }
+
+    if (action === 'submit-code') {
+      const code = String(data.get('code') || '').trim();
+      if (!code) { showToast('Ingresa el código que te enviamos.'); return; }
+      try {
+        const res = await api('/auth/verify-code', { method: 'POST', body: JSON.stringify({ phone: state.authPhone, code }) });
+        state.authToken = res.token;
+        state.loggedIn = true;
+        state.activeTab = 'home';
+        const me = await api('/me');
+        applyMe(me);
+        save();
+        render();
+        showToast(`¡Bienvenido, ${state.userName}! 🐾`);
+      } catch (err) {
+        showToast('Código inválido o vencido.');
+      }
+      return;
     }
 
     if (action === 'submit-add-pet') {
@@ -778,5 +914,17 @@
   /* Init                                                               */
   /* ---------------------------------------------------------------- */
 
+  // Comisión/textos que el admin haya guardado desde su panel — si falla
+  // (offline, backend caído) los precios simplemente usan los valores por
+  // defecto del catálogo, como hasta ahora.
+  api('/settings').then((settings) => CATALOG.setOverrides(settings)).catch(() => {});
+
   render();
+
+  // Si la sesión ya estaba guardada (recarga de página), refresca los
+  // datos del cliente en segundo plano en vez de quedarse solo con el
+  // caché de localStorage.
+  if (state.loggedIn && state.authToken) {
+    api('/me').then(applyMe).then(() => { save(); render(); }).catch(() => { /* sin conexión: se queda con el caché */ });
+  }
 })();
