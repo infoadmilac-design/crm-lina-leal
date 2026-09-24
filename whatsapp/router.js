@@ -149,7 +149,7 @@ function handlePackages(to, session, incoming) {
     if (pkgId === 'custom') {
       session.returnTo = 'bulk';
       session.step = 'plan_services';
-      return [M.servicesChecklist(to, session)];
+      return [M.servicesPicker(to, session)];
     }
     if (applyPackage(session, pkgId)) {
       // Un paquete fija qué y cuánto, pero el cliente siempre elige cuándo —
@@ -228,7 +228,7 @@ function startServiceConfig(to, session, builderId) {
     session.paseoDays = [];
     session.paseoFranja = null;
     session.step = 'catalog_paseo_days';
-    return [M.paseoDaysChecklist(to, session)];
+    return [M.paseoDaysPicker(to, session)];
   }
   if (builderId === 'barf') {
     session.step = 'catalog_barf_variant';
@@ -357,25 +357,37 @@ function handleCatalogBanoNotes(to, session, incoming) {
   return [M.banoNotesPrompt(to)];
 }
 
+/** Días ya confirmados (por el Flow de un solo toque, o por "Continuar" en
+    la lista de respaldo) — pasa a elegir franja. Compartido por ambos
+    caminos para no duplicar la regla de frecuencia. */
+function confirmPaseoDays(to, session) {
+  if (!session.paseoDays || !session.paseoDays.length) return [M.paseoDaysPicker(to, session)];
+  // Fuera de un paquete, los días elegidos SON la frecuencia (más días,
+  // menos por paseo). Dentro de un paquete la frecuencia ya viene fija
+  // y esto es solo para saber cuáles días prefiere — no toca el precio.
+  if (!session.paseoScheduleOnly) session.paseoFreq = session.paseoDays.length;
+  session.step = 'catalog_paseo_franja';
+  return [M.paseoFranjaButtons(to)];
+}
+
 function handleCatalogPaseoDays(to, session, incoming) {
+  // Respuesta del Flow de checkboxes: llegan TODOS los días marcados de una
+  // sola vez (ver messages.js::paseoDaysPicker), sin ir tocando uno a uno.
+  if (incoming.type === 'flow_reply') {
+    const chosen = Array.isArray(incoming.data.selected) ? incoming.data.selected.map(Number) : [];
+    session.paseoDays = chosen.filter((n) => Number.isInteger(n) && n >= 0 && n <= 6).sort((a, b) => a - b);
+    return confirmPaseoDays(to, session);
+  }
   if (incoming.type === 'interactive' && incoming.id.startsWith('paseoday_')) {
     const rest = incoming.id.slice('paseoday_'.length);
-    if (rest === 'continue') {
-      if (!session.paseoDays || !session.paseoDays.length) return [M.paseoDaysChecklist(to, session)];
-      // Fuera de un paquete, los días elegidos SON la frecuencia (más días,
-      // menos por paseo). Dentro de un paquete la frecuencia ya viene fija
-      // y esto es solo para saber cuáles días prefiere — no toca el precio.
-      if (!session.paseoScheduleOnly) session.paseoFreq = session.paseoDays.length;
-      session.step = 'catalog_paseo_franja';
-      return [M.paseoFranjaButtons(to)];
-    }
+    if (rest === 'continue') return confirmPaseoDays(to, session);
     const dayIdx = Number(rest);
     session.paseoDays = session.paseoDays || [];
     const pos = session.paseoDays.indexOf(dayIdx);
     if (pos >= 0) session.paseoDays.splice(pos, 1); else session.paseoDays.push(dayIdx);
-    return [M.paseoDaysChecklist(to, session)];
+    return [M.paseoDaysPicker(to, session)];
   }
-  return [M.paseoDaysChecklist(to, session)];
+  return [M.paseoDaysPicker(to, session)];
 }
 
 function handleCatalogPaseoFranja(to, session, incoming) {
@@ -454,23 +466,37 @@ function handlePlanWeight(to, session, incoming) {
     session.weightIdx = idx;
     session.barfKey = CATALOG.BARF_DEFAULT[idx];
     session.step = 'plan_services';
-    return [M.servicesChecklist(to, session)];
+    return [M.servicesPicker(to, session)];
   }
   return [M.weightPicker(to)];
 }
 
 function handlePlanServices(to, session, incoming) {
-  if (incoming.type !== 'interactive') return [M.servicesChecklist(to, session)];
+  // Respuesta del Flow de checkboxes: llega TODA la selección de una vez
+  // (ver messages.js::servicesPicker) — reemplaza por completo los servicios
+  // marcados, no los va sumando toggle a toggle como la lista de respaldo.
+  // Se filtra contra los servicios activos por seguridad: el data-source del
+  // Flow es JSON estático publicado en Meta, no respeta en vivo lo que el
+  // admin haya desactivado (ver Configuración > Servicios).
+  if (incoming.type === 'flow_reply') {
+    const chosen = Array.isArray(incoming.data.selected) ? incoming.data.selected : [];
+    CATALOG.BUILDER_ROW_IDS.forEach((id) => {
+      session.services[id] = CATALOG.ROW_META[id].active !== false && chosen.includes(id);
+    });
+    session.packageDiscountPct = null;
+    return advancePastServices(to, session);
+  }
+  if (incoming.type !== 'interactive') return [M.servicesPicker(to, session)];
   if (incoming.id.startsWith('toggle_')) {
     const id = incoming.id.slice('toggle_'.length);
     session.services[id] = !session.services[id];
     session.packageDiscountPct = null;
-    return [M.servicesChecklist(to, session)];
+    return [M.servicesPicker(to, session)];
   }
   if (incoming.id === 'services_continue') {
     return advancePastServices(to, session);
   }
-  return [M.servicesChecklist(to, session)];
+  return [M.servicesPicker(to, session)];
 }
 
 function advancePastServices(to, session) {
@@ -500,7 +526,7 @@ function advanceBulkConfig(to, session, justConfiguredId) {
 function startPaseoSchedule(to, session) {
   session.paseoScheduleOnly = true;
   session.step = 'catalog_paseo_days';
-  return [M.paseoDaysChecklist(to, session)];
+  return [M.paseoDaysPicker(to, session)];
 }
 
 // Servicios de visita puntual que agendan día y hora en esta fase — paseo
@@ -540,7 +566,7 @@ function handlePlanSummary(to, session, incoming) {
   }
   if (incoming.id === 'plan_edit') {
     session.step = 'plan_services';
-    return [M.servicesChecklist(to, session)];
+    return [M.servicesPicker(to, session)];
   }
   const { lines, total } = ticketFor(session);
   return [M.ticketSummary(to, { weightIdx: session.weightIdx, lines, total })];

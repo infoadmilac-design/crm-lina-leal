@@ -1,0 +1,61 @@
+{
+  "version": "5.0",
+  "screens": [
+    {
+      "id": "SERVICES",
+      "title": "Arma tu plan",
+      "data": {
+        "selected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "__example__": ["bano", "paseo"]
+        }
+      },
+      "terminal": true,
+      "success": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "¿Qué servicios necesitas?"
+          },
+          {
+            "type": "TextBody",
+            "text": "Marca todos los que quieras — se agregan todos juntos a tu plan."
+          },
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              {
+                "type": "CheckboxGroup",
+                "name": "services",
+                "label": "Servicios",
+                "required": false,
+                "init-value": "${data.selected}",
+                "data-source": [
+                  { "id": "bano", "title": "🛁 Baño a domicilio" },
+                  { "id": "paseo", "title": "🐕 Paseos" },
+                  { "id": "barf", "title": "🥩 Alimentación BARF" },
+                  { "id": "vacunas", "title": "💉 Vacunación anual" },
+                  { "id": "dental", "title": "🦷 Limpieza dental" }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Continuar",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "selected": "${form.services}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

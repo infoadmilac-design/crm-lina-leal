@@ -56,6 +56,38 @@ function buttonMessage(to, { header, body, footer, buttons }) {
   };
 }
 
+/* ---- WhatsApp Flow: pantalla nativa con checkboxes reales dentro del chat
+   — la única forma de dejar marcar VARIAS opciones a la vez y mandarlas
+   juntas de un solo toque (una lista/botón normal de WhatsApp siempre es de
+   una sola selección y se cierra apenas se toca una fila). El Flow debe
+   existir y estar publicado en el WhatsApp Manager de Meta primero — ver
+   whatsapp/flows/*.json y docs/whatsapp-flows-setup.md. Cada llamador
+   (servicesPicker/paseoDaysPicker más abajo) cae solo a la lista de toda la
+   vida si el flow_id no está configurado todavía. */
+const FLOW_MESSAGE_VERSION = '3';
+
+function flowMessage(to, { body, flowId, flowCta, screen, data, flowToken }) {
+  return {
+    ...base(to),
+    type: 'interactive',
+    interactive: {
+      type: 'flow',
+      body: { text: body },
+      action: {
+        name: 'flow',
+        parameters: {
+          flow_message_version: FLOW_MESSAGE_VERSION,
+          flow_token: flowToken || `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          flow_id: flowId,
+          flow_cta: flowCta,
+          flow_action: 'navigate',
+          flow_action_payload: { screen, data: data || {} },
+        },
+      },
+    },
+  };
+}
+
 /* ---- 0. Onboarding: bienvenida emocional + nombre, peso y raza ---- */
 /* Textos editables desde el panel de administrador (Configuración > Textos
    del bot): los dos mensajes simples de siempre (welcome, humanHandoff) más
@@ -226,6 +258,27 @@ function servicesChecklist(to, session) {
   });
 }
 
+/** Selección de servicios — usa el Flow de checkboxes (marca varios y manda
+    todo junto) si WHATSAPP_FLOW_ID_SERVICES está configurado; si no, cae en
+    la lista de toque-uno-a-la-vez de siempre. El data-source del Flow es
+    JSON estático publicado en Meta, así que NO respeta en vivo los
+    servicios que el admin desactivó (ver Configuración > Servicios) — si se
+    desactiva uno, hay que volver a publicar el Flow con ese servicio quitado
+    (o simplemente no configurar el Flow y quedarse con la lista, que sí es
+    dinámica). Ver whatsapp/flows/services.json. */
+function servicesPicker(to, session) {
+  const flowId = process.env.WHATSAPP_FLOW_ID_SERVICES;
+  if (!flowId) return servicesChecklist(to, session);
+  const selected = BUILDER_ROW_IDS.filter((id) => ROW_META[id].active !== false && session.services[id]);
+  return flowMessage(to, {
+    body: '¿Qué incluye su plan? Marca todos los que quieras a la vez y toca "Continuar".',
+    flowId,
+    flowCta: 'Elegir servicios',
+    screen: 'SERVICES',
+    data: { selected },
+  });
+}
+
 /* ---- baño: subtipo + notas ---- */
 const BANO_ROW_LABEL = {
   general: 'Baño general',
@@ -330,6 +383,26 @@ function paseoDaysChecklist(to, session) {
     ? `🐕 Tu plan incluye ${session.paseoFreq}×/semana de paseo — ¿qué días prefieres? (esto no cambia el precio, ya está cerrado en tu plan)`
     : `🐕 ¿Qué días quieres que salga a pasear? Entre más días elijas, más baja el precio por cada paseo: 1 día/semana sale ${p1}/paseo, 7 días/semana baja a ${p7}/paseo.`;
   return listMessage(to, { body, buttonLabel: 'Elegir días', sections: [{ title: 'Días de paseo', rows }] });
+}
+
+/** Selección de días — usa el Flow de checkboxes (marca varios días y manda
+    todo junto) si WHATSAPP_FLOW_ID_PASEO_DAYS está configurado; si no, cae
+    en la lista de toque-uno-a-la-vez de siempre. Ver whatsapp/flows/paseo-days.json. */
+function paseoDaysPicker(to, session) {
+  const flowId = process.env.WHATSAPP_FLOW_ID_PASEO_DAYS;
+  if (!flowId) return paseoDaysChecklist(to, session);
+  const p1 = fmt(CATALOG.paseoFreqBase(session.weightIdx, 1));
+  const p7 = fmt(CATALOG.paseoFreqBase(session.weightIdx, 7));
+  const body = session.paseoScheduleOnly
+    ? `🐕 Tu plan incluye ${session.paseoFreq}×/semana de paseo — marca los días que prefieres, todos a la vez (no cambia el precio, ya está cerrado en tu plan).`
+    : `🐕 Marca todos los días que quieras que salga a pasear, a la vez. Entre más días elijas, más baja el precio por cada paseo: 1 día/semana sale ${p1}/paseo, 7 días/semana baja a ${p7}/paseo.`;
+  return flowMessage(to, {
+    body,
+    flowId,
+    flowCta: 'Elegir días',
+    screen: 'DAYS',
+    data: { selected: (session.paseoDays || []).map(String) },
+  });
 }
 
 function paseoFranjaButtons(to) {
@@ -553,6 +626,7 @@ module.exports = {
   catalogDetail,
   weightPicker,
   servicesChecklist,
+  servicesPicker,
   packagesDetail,
   packagesList,
   packageAppliedIntro,
@@ -560,6 +634,7 @@ module.exports = {
   banoFrequencyButtons,
   banoNotesPrompt,
   paseoDaysChecklist,
+  paseoDaysPicker,
   paseoFranjaButtons,
   paseoDurationButtons,
   paseoModalidadButtons,

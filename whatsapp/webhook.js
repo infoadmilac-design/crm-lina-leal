@@ -63,6 +63,16 @@ function normalizeIncoming(message) {
     const i = message.interactive;
     if (i.type === 'list_reply') return { type: 'interactive', id: i.list_reply.id };
     if (i.type === 'button_reply') return { type: 'interactive', id: i.button_reply.id };
+    // Envío de un WhatsApp Flow (ver messages.js::flowMessage) — llega TODO
+    // lo marcado de una vez en response_json (string JSON), sin depender de
+    // en qué paso/flow estaba: router.js lo desambigua por session.step,
+    // igual que ya hace con toggle_/paseoday_ (ver handlePlanServices y
+    // handleCatalogPaseoDays).
+    if (i.type === 'nfm_reply') {
+      let data = {};
+      try { data = JSON.parse(i.nfm_reply.response_json || '{}'); } catch (e) { /* respuesta rara, se ignora */ }
+      return { type: 'flow_reply', data };
+    }
   }
   if (message.type === 'button') return { type: 'interactive', id: message.button.payload }; // tap en botón de plantilla
   return { type: 'text', text: '' };
@@ -142,11 +152,14 @@ app.post('/webhook', async (req, res) => {
 
 /* ---- Rutas de desarrollo, sin necesidad de credenciales de Meta ---- */
 
-// Simula un turno de conversación: { "from": "57300...", "text": "hola" } o { "from": "...", "id": "menu_plan" }
+// Simula un turno de conversación: { "from": "57300...", "text": "hola" }, { "from": "...", "id": "menu_plan" },
+// o { "from": "...", "flowData": { "selected": ["bano","paseo"] } } para probar una respuesta de WhatsApp Flow
+// sin tener el Flow publicado en Meta todavía (ver whatsapp/flows/*.json).
 app.post('/dev/simulate', async (req, res) => {
-  const { from, text, id } = req.body || {};
+  const { from, text, id, flowData } = req.body || {};
   if (!from) return res.status(400).json({ error: 'falta "from" (cualquier número de prueba, ej. 573001112233)' });
-  const incoming = id ? { type: 'interactive', id } : { type: 'text', text: text || 'hola' };
+  const incoming = flowData ? { type: 'flow_reply', data: flowData }
+    : id ? { type: 'interactive', id } : { type: 'text', text: text || 'hola' };
   try {
     const outgoing = await handleTurn(from, incoming);
     res.json({ dryRun: !!DRY_RUN, session: session.getSession(from), outgoing });

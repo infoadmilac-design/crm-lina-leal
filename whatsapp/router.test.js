@@ -261,4 +261,41 @@ assert.equal(s3.paseoFreq, 3);
 assert.equal(s3.dentalFreq, 'mensual');
 assert.equal(s3.packageDiscountPct, null, 'ya no debe quedar descuento de paquete — se reconfiguró todo a mano');
 
-console.log('\n✅ Todas las verificaciones pasaron — el cliente elige siempre días/franja/hora para cada servicio (con o sin paquete), y el precio por unidad + ahorro se muestra en paquetes y servicios.');
+/* ================================================================== */
+/* Escenario 4 — WhatsApp Flow: selección múltiple de una sola vez,    */
+/* sin depender de que el Flow esté publicado en Meta (se simula la    */
+/* respuesta directo, igual que hace /dev/simulate con "flowData")     */
+/* ================================================================== */
+const to4 = '573001112266';
+const s4 = onboard(to4, 'Rocco', 1, 'flow');
+
+step(to4, s4, { type: 'interactive', id: 'pkg_custom' }, '[flow] arma tu propio plan');
+assert.equal(s4.step, 'plan_services', 'debe llegar al checklist de servicios');
+
+out = step(to4, s4, { type: 'flow_reply', data: { selected: ['bano', 'paseo', 'dental'] } }, '[flow] marca baño, paseo y dental de una sola vez');
+assert.deepEqual(s4.services, { bano: true, paseo: true, barf: false, vacunas: false, dental: true }, 'el Flow reemplaza toda la selección en un solo turno, no toggle a toggle');
+assert.equal(s4.step, 'catalog_bano_variant', 'debe empezar a configurar baño, el primero de los elegidos');
+
+step(to4, s4, { type: 'interactive', id: 'bano_general' }, '[flow] baño general');
+step(to4, s4, { type: 'interactive', id: 'banofreq_1' }, '[flow] 1×/mes');
+step(to4, s4, { type: 'text', text: 'ninguna' }, '[flow] sin notas');
+assert.equal(s4.step, 'catalog_paseo_days', 'tras baño debe seguir con paseo, que pide días');
+
+out = step(to4, s4, { type: 'flow_reply', data: { selected: ['0', '2', '4', '5'] } }, '[flow] marca lun/mié/vie/sáb de una sola vez');
+assert.deepEqual(s4.paseoDays, [0, 2, 4, 5], 'el Flow de días reemplaza toda la selección en un solo turno');
+assert.equal(s4.paseoFreq, 4, 'fuera de un paquete, la cantidad de días elegidos SÍ fija la frecuencia');
+assert.equal(s4.step, 'catalog_paseo_franja', 'confirmados los días, sigue franja — igual que con la lista de respaldo');
+
+// Un servicio que el admin desactivó nunca debe colarse, aunque el Flow (JSON
+// estático publicado en Meta) todavía lo muestre como opción marcable.
+CATALOG.setOverrides({ serviceActive: { barf: false } });
+const to5 = '573001112277';
+const s5 = onboard(to5, 'Mia', 0, 'flow-inactivo');
+step(to5, s5, { type: 'interactive', id: 'pkg_custom' }, '[flow-inactivo] arma tu propio plan');
+step(to5, s5, { type: 'flow_reply', data: { selected: ['bano', 'barf', 'vacunas'] } }, '[flow-inactivo] marca baño, BARF (desactivado) y vacunas');
+assert.equal(s5.services.barf, false, 'BARF desactivado por el admin no debe agregarse aunque venga marcado en la respuesta del Flow');
+assert.equal(s5.services.bano, true);
+assert.equal(s5.services.vacunas, true);
+CATALOG.setOverrides({ serviceActive: { barf: true } }); // no afecta otros escenarios que corran después
+
+console.log('\n✅ Todas las verificaciones pasaron — el cliente elige siempre días/franja/hora para cada servicio (con o sin paquete), el precio por unidad + ahorro se muestra en paquetes y servicios, y los WhatsApp Flows de selección múltiple reemplazan la selección completa en un solo turno.');
