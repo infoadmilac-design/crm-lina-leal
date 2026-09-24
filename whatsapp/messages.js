@@ -58,14 +58,23 @@ function buttonMessage(to, { header, body, footer, buttons }) {
 
 /* ---- 0. Onboarding: bienvenida emocional + nombre, peso y raza ---- */
 /* Textos editables desde el panel de administrador (Configuración > Textos
-   del bot) — solo estos dos, por ser mensajes de texto simple sin botones
-   ni listas (ver el plan: reescribir los demás es más arriesgado). Si no
-   hay override guardado, se usa el texto por defecto de siempre. */
+   del bot): los dos mensajes simples de siempre (welcome, humanHandoff) más
+   el menú principal y los encabezados/botones de las listas del catálogo.
+   El resto del bot (filas individuales, resúmenes de precio, flujo de
+   agendamiento) sigue fijo en código — reescribirlo es más riesgoso. Si no
+   hay override guardado, se usa el texto por defecto de siempre.
+   `mainMenuBody` acepta el placeholder literal "{nombre}", reemplazado por
+   el nombre del cliente al construir el mensaje (ver mainMenu() abajo). */
 const DEFAULT_BOT_TEXTS = {
   welcome:
     '¡Guau, hola! 🐾 Soy la voz (bueno, la patita escritora) de ALLPETZ: el ecosistema que junta en un solo lugar TODO lo que tu mejor amigo de cuatro patas va a necesitar — paseos, baño, comida rica, vacunas, dientes limpios, entrenamiento, transporte, hotel y hasta seguro.\n\n' +
     'Nada de andar buscando 5 contactos distintos cada vez que se te ocurre algo. En unos minutos armamos el plan perfecto según su tamaño, y listo: tú te olvidas de estar pendiente, porque nosotros te recordamos cada cita a tiempo. Menos preocupaciones para ti, más cariño para tu peludo 🐶✨',
   humanHandoff: '🙋 Te conecto con el equipo de ALLPETZ, en un momento te escriben por aquí mismo.',
+  mainMenuBody: '¡Hola {nombre}! 🐾 Soy el asistente de ALLPETZ. ¿En qué te ayudo hoy?',
+  mainMenuButtonLabel: 'Ver opciones',
+  catalogIntroCaption: 'ALLPETZ 🐾 — cuidado para tu mascota',
+  catalogListBody: 'Elige y combina 🐾',
+  catalogListButtonLabel: 'Ver catálogo',
 };
 const BOT_TEXTS = Object.assign({}, DEFAULT_BOT_TEXTS);
 
@@ -97,8 +106,8 @@ function askBreed(to, petName) {
 /* ---- 1. Menú principal ---- */
 function mainMenu(to, userName) {
   return listMessage(to, {
-    body: `¡Hola ${userName}! 🐾 Soy el asistente de ALLPETZ. ¿En qué te ayudo hoy?`,
-    buttonLabel: 'Ver opciones',
+    body: BOT_TEXTS.mainMenuBody.replace('{nombre}', userName),
+    buttonLabel: BOT_TEXTS.mainMenuButtonLabel,
     sections: [
       {
         title: 'Menú',
@@ -118,13 +127,13 @@ function mainMenu(to, userName) {
 const CATALOG_HERO_PHOTO = 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Girl_walking_dog_001.jpg/960px-Girl_walking_dog_001.jpg';
 
 function catalogIntro(to) {
-  return imageMessage(to, CATALOG_HERO_PHOTO, 'ALLPETZ 🐾 — cuidado para tu mascota');
+  return imageMessage(to, CATALOG_HERO_PHOTO, BOT_TEXTS.catalogIntroCaption);
 }
 
 function catalogList(to) {
   return listMessage(to, {
-    body: 'Elige y combina 🐾',
-    buttonLabel: 'Ver catálogo',
+    body: BOT_TEXTS.catalogListBody,
+    buttonLabel: BOT_TEXTS.catalogListButtonLabel,
     sections: [
       {
         title: 'Servicios',
@@ -139,7 +148,10 @@ function catalogList(to) {
 }
 
 function catalogDetail(to, service, weightIdx) {
-  const inBuilder = !!service.map;
+  // Un servicio con `map` pero desactivado por el admin (ver Configuración >
+  // Servicios) se trata igual que uno sin `map` todavía: "avísame cuando
+  // esté" en vez de dejarlo agendar.
+  const inBuilder = !!service.map && ROW_META[service.map] && ROW_META[service.map].active !== false;
   const priceLine = inBuilder && weightIdx != null
     ? `\n\nDesde *${fmt(price(service.map, weightIdx, {}))}* para tu mascota.`
     : '';
@@ -196,7 +208,7 @@ function servicesChecklist(to, session) {
       {
         title: 'Servicios',
         rows: [
-          ...BUILDER_ROW_IDS.map((id) => {
+          ...BUILDER_ROW_IDS.filter((id) => ROW_META[id].active !== false).map((id) => {
             const row = ROW_META[id];
             const on = !!session.services[id];
             const p = fmt(price(id, session.weightIdx, opts));

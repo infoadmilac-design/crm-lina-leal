@@ -58,12 +58,17 @@
     { emo: '🐺', name: 'Gde', kg: '25+' },
   ];
   const ROW_META = {
-    bano: { id: 'bano', emoji: '🛁', label: 'Baño a domicilio', sub: 'Mensual' },
-    paseo: { id: 'paseo', emoji: '🐕', label: 'Paseos', sub: 'Con GPS en vivo' },
-    barf: { id: 'barf', emoji: '🥩', label: 'Alimentación BARF', sub: 'Plan 30 días' },
-    vacunas: { id: 'vacunas', emoji: '💉', label: 'Vacunación anual', sub: 'Prorrateado' },
-    dental: { id: 'dental', emoji: '🦷', label: 'Limpieza dental', sub: 'Profesional' },
+    bano: { id: 'bano', emoji: '🛁', label: 'Baño a domicilio', sub: 'Mensual', active: true },
+    paseo: { id: 'paseo', emoji: '🐕', label: 'Paseos', sub: 'Con GPS en vivo', active: true },
+    barf: { id: 'barf', emoji: '🥩', label: 'Alimentación BARF', sub: 'Plan 30 días', active: true },
+    vacunas: { id: 'vacunas', emoji: '💉', label: 'Vacunación anual', sub: 'Prorrateado', active: true },
+    dental: { id: 'dental', emoji: '🦷', label: 'Limpieza dental', sub: 'Profesional', active: true },
   };
+  // Copia congelada de ROW_META tal como arrancó el archivo — setOverrides()
+  // muta ROW_META en caliente, así que esta es la referencia "de fábrica"
+  // que el panel de admin usa para mostrar valores por defecto / reset
+  // (mismo patrón que DEFAULT_BOT_TEXTS en whatsapp/messages.js).
+  const DEFAULT_ROW_META = JSON.parse(JSON.stringify(ROW_META));
   const BUILDER_ROW_IDS = ['bano', 'paseo', 'barf', 'vacunas', 'dental'];
 
   // Fotos genéricas de banco de imágenes (Wikimedia Commons, licencia libre,
@@ -242,6 +247,16 @@
       if (p.dental) Object.assign(PR, { dental: p.dental });
       if (p.barfEntregaFee != null) BARF_ENTREGA_FEE_STATE.value = p.barfEntregaFee;
     }
+    if (overrides.rowMeta) {
+      Object.keys(overrides.rowMeta).forEach((id) => {
+        if (ROW_META[id]) Object.assign(ROW_META[id], overrides.rowMeta[id]);
+      });
+    }
+    if (overrides.serviceActive) {
+      Object.keys(overrides.serviceActive).forEach((id) => {
+        if (ROW_META[id]) ROW_META[id].active = !!overrides.serviceActive[id];
+      });
+    }
   }
 
   // BARF_ENTREGA_FEE es un valor con nombre (no un objeto), y setOverrides
@@ -344,7 +359,7 @@
   }
 
   return {
-    PR, BARF, BARF_DEFAULT, BARF_OPTIONS, BARF_ENTREGA_FEE_STATE, TIER, WEIGHTS, ROW_META, BUILDER_ROW_IDS, SERVICES, cop, fmt, price,
+    PR, BARF, BARF_DEFAULT, BARF_OPTIONS, BARF_ENTREGA_FEE_STATE, TIER, WEIGHTS, ROW_META, DEFAULT_ROW_META, BUILDER_ROW_IDS, SERVICES, cop, fmt, price,
     BANO_VARIANTS, BANO_VARIANT_ORDER, BANO_FREQ_OPTIONS, BANO_FREQ_MULT, banoVariantPrice, banoVisitPrice,
     PASEO_FREQ_OPTIONS, PASEO_DURATION, PASEO_MODALIDAD, paseoPrice, paseoFreqBase,
     DENTAL_FREQ_OPTIONS, DENTAL_FREQ_ORDER, dentalPrice, serviceDetailLabel,

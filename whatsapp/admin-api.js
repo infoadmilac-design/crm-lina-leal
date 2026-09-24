@@ -8,7 +8,13 @@ const db = require('./db.js');
 const M = require('./messages.js');
 const CATALOG = require('../catalog.js');
 
-const ALLOWED_SETTING_KEYS = ['commission', 'business_info', 'bot_texts', 'pricing'];
+const ALLOWED_SETTING_KEYS = ['commission', 'business_info', 'bot_texts', 'pricing', 'row_meta', 'service_active'];
+
+/** Los 5 servicios agendables, todos activos — default de fábrica para
+    "service_active" cuando el admin no ha guardado nada todavía. */
+function defaultServiceActive() {
+  return CATALOG.BUILDER_ROW_IDS.reduce((acc, id) => { acc[id] = true; return acc; }, {});
+}
 
 /** Snapshot de los precios base efectivos ahora mismo (defaults de catalog.js
     ya con cualquier override aplicado) — lo que ve la calculadora del admin
@@ -118,7 +124,10 @@ function createAdminApiRouter() {
     const settings = await db.getSettings();
     res.json({
       settings,
-      defaults: { commission: CATALOG.COMMISSION_PCT, botTexts: M.DEFAULT_BOT_TEXTS, pricing: currentPricingDefaults() },
+      defaults: {
+        commission: CATALOG.COMMISSION_PCT, botTexts: M.DEFAULT_BOT_TEXTS, pricing: currentPricingDefaults(),
+        rowMeta: CATALOG.DEFAULT_ROW_META, serviceActive: defaultServiceActive(),
+      },
     });
   }));
 
@@ -132,6 +141,8 @@ function createAdminApiRouter() {
     if (key === 'commission') CATALOG.setOverrides({ commission: value });
     if (key === 'bot_texts') M.setOverrides({ botTexts: value });
     if (key === 'pricing') CATALOG.setOverrides({ pricing: value });
+    if (key === 'row_meta') CATALOG.setOverrides({ rowMeta: value });
+    if (key === 'service_active') CATALOG.setOverrides({ serviceActive: value });
     res.json({ key, value });
   }));
 

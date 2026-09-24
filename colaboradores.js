@@ -520,7 +520,7 @@
 
   // Comisión que el admin haya guardado desde su panel — si falla, se
   // queda con los valores por defecto del catálogo.
-  api('/settings').then((settings) => CATALOG.setOverrides(settings)).catch(() => {});
+  api('/settings').then((settings) => { CATALOG.setOverrides(settings); render(); }).catch(() => {});
 
   render();
 

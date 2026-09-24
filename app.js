@@ -340,7 +340,8 @@
       </div>
       <div class="services-grid">
         ${SERVICES.map(svc => {
-          const selected = svc.map ? !!state.services[svc.map] : false;
+          const bookable = !!svc.map && ROW_META[svc.map] && ROW_META[svc.map].active !== false;
+          const selected = bookable && !!state.services[svc.map];
           return `
           <div class="service-card ${selected ? 'selected' : ''}" style="background:${svc.bg}; color:${svc.text};" data-action="pick-service" data-id="${svc.id}">
             <div>
@@ -348,7 +349,7 @@
               <div class="sc-title">${svc.title}</div>
               <div class="sc-desc">${svc.desc}</div>
             </div>
-            <span class="sc-tag">${selected ? 'en tu plan' : 'disponible'}</span>
+            <span class="sc-tag">${selected ? 'en tu plan' : bookable ? 'disponible' : 'muy pronto'}</span>
           </div>`;
         }).join('')}
       </div>
@@ -361,7 +362,7 @@
 
   function renderPlan() {
     const w = state.weightIdx;
-    const rows = Object.values(ROW_META);
+    const rows = Object.values(ROW_META).filter(r => r.active !== false);
     const lines = computeTicketLines();
     const total = computeTotal();
     const isDirty = !state.planConfirmed || !state.planSnapshot || state.planSnapshot.key !== selectionKey();
@@ -755,7 +756,8 @@
       case 'pick-service': {
         const svc = SERVICES.find(s => s.id === t.getAttribute('data-id'));
         if (!svc) break;
-        if (svc.map) {
+        const bookable = !!svc.map && ROW_META[svc.map] && ROW_META[svc.map].active !== false;
+        if (bookable) {
           state.services[svc.map] = true;
           save();
           state.activeTab = 'plan';
@@ -917,7 +919,7 @@
   // Comisión/textos que el admin haya guardado desde su panel — si falla
   // (offline, backend caído) los precios simplemente usan los valores por
   // defecto del catálogo, como hasta ahora.
-  api('/settings').then((settings) => CATALOG.setOverrides(settings)).catch(() => {});
+  api('/settings').then((settings) => { CATALOG.setOverrides(settings); render(); }).catch(() => {});
 
   render();
 

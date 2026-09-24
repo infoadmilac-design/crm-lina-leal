@@ -115,9 +115,11 @@
     const res = await api('/admin/settings');
     setState({ settings: res.settings || {}, settingsDefaults: res.defaults });
     // Aplica lo guardado sobre la copia de catalog.js que corre en este
-    // navegador — así la calculadora de precios parte de la verdad real,
-    // no de los defaults con los que arrancó el archivo.
-    CATALOG.setOverrides({ commission: res.settings.commission, pricing: res.settings.pricing });
+    // navegador — así la calculadora de precios y el panel de servicios
+    // parten de la verdad real, no de los defaults con los que arrancó el
+    // archivo. setOverrides() ignora en silencio las claves que no reconoce
+    // (businessInfo, botTexts), así que pasar el objeto completo es seguro.
+    CATALOG.setOverrides(res.settings);
   }
 
   async function loadFinancial() {
@@ -608,6 +610,15 @@
     const defaultTexts = (state.settingsDefaults && state.settingsDefaults.botTexts) || {};
     const texts = Object.assign({}, defaultTexts, state.settings.botTexts || {});
 
+    const defaultRowMeta = (state.settingsDefaults && state.settingsDefaults.rowMeta) || {};
+    const rowMeta = SERVICE_IDS.reduce((acc, id) => {
+      acc[id] = Object.assign({}, defaultRowMeta[id], CATALOG.ROW_META[id]);
+      return acc;
+    }, {});
+    const savedActive = state.settings.serviceActive || {};
+
+    const ta = (field, rows, val) => `<textarea data-text="${field}" rows="${rows}" style="width:100%;border:var(--border);border-radius:12px;padding:10px;font-family:inherit;">${esc(val || '')}</textarea>`;
+
     return `
     <div class="card">
       <h2>Datos de la empresa</h2>
@@ -619,11 +630,35 @@
     </div>
 
     <div class="card">
-      <h2>Textos del bot</h2>
-      <p class="empty" style="padding-top:0;margin-bottom:10px;">Solo estos dos mensajes de texto simple son editables por ahora — el resto del bot (listas, botones, precios) sigue igual.</p>
-      <div class="field"><label>Bienvenida (primer contacto)</label><textarea data-text="welcome" rows="6" style="width:100%;border:var(--border);border-radius:12px;padding:10px;font-family:inherit;">${esc(texts.welcome || '')}</textarea></div>
-      <div class="field"><label>"Hablar con alguien"</label><textarea data-text="humanHandoff" rows="2" style="width:100%;border:var(--border);border-radius:12px;padding:10px;font-family:inherit;">${esc(texts.humanHandoff || '')}</textarea></div>
+      <h2>Textos del bot de WhatsApp</h2>
+      <p class="empty" style="padding-top:0;margin-bottom:10px;">Mensajes de bienvenida, menú principal y catálogo. El resto del flujo (filas de precios, resúmenes, agendamiento) sigue fijo en código.</p>
+      <div class="field"><label>Bienvenida (primer contacto)</label>${ta('welcome', 6, texts.welcome)}</div>
+      <div class="field"><label>"Hablar con alguien"</label>${ta('humanHandoff', 2, texts.humanHandoff)}</div>
+      <div class="field"><label>Menú principal — texto (usa <code>{nombre}</code> para el nombre del cliente)</label>${ta('mainMenuBody', 2, texts.mainMenuBody)}</div>
+      <div class="field"><label>Menú principal — botón</label><input type="text" data-text="mainMenuButtonLabel" value="${esc(texts.mainMenuButtonLabel || '')}"></div>
+      <div class="field"><label>Catálogo — pie de foto</label>${ta('catalogIntroCaption', 2, texts.catalogIntroCaption)}</div>
+      <div class="field"><label>Catálogo — texto de la lista</label>${ta('catalogListBody', 2, texts.catalogListBody)}</div>
+      <div class="field"><label>Catálogo — botón</label><input type="text" data-text="catalogListButtonLabel" value="${esc(texts.catalogListButtonLabel || '')}"></div>
       <button class="btn small" data-action="save-bot-texts">Guardar textos</button>
+    </div>
+
+    <div class="card">
+      <h2>Servicios</h2>
+      <p class="empty" style="padding-top:0;margin-bottom:10px;">Nombre, emoji y subtítulo de cada servicio agendable — en el catálogo de WhatsApp, la app y el armador de planes. Los precios se editan aparte, en la pestaña Precios. Un servicio desactivado deja de poder agendarse (aparece como "muy pronto") pero no se borra.</p>
+      ${SERVICE_IDS.map((id) => {
+        const r = rowMeta[id];
+        const active = savedActive[id] !== undefined ? !!savedActive[id] : r.active !== false;
+        return `
+        <div class="item" data-svc="${id}">
+          <div class="field" style="display:flex;gap:10px;align-items:flex-end;">
+            <div style="width:70px;"><label>Emoji</label><input type="text" data-svc-field="emoji" value="${esc(r.emoji || '')}" style="text-align:center;"></div>
+            <div style="flex:1;"><label>Nombre</label><input type="text" data-svc-field="label" value="${esc(r.label || '')}"></div>
+            <div style="flex:1;"><label>Subtítulo</label><input type="text" data-svc-field="sub" value="${esc(r.sub || '')}"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:4px;"><input type="checkbox" data-svc-field="active" ${active ? 'checked' : ''}> Activo (se puede agendar)</label>
+        </div>`;
+      }).join('')}
+      <button class="btn small" data-action="save-services-config">Guardar servicios</button>
     </div>`;
   }
 
@@ -739,6 +774,29 @@
         await api('/admin/settings/bot_texts', { method: 'PUT', body: JSON.stringify({ value }) });
         showToast('Textos guardados ✅');
         await loadSettings();
+      } catch (err) { showToast(err.message); }
+      return;
+    }
+
+    if (action === 'save-services-config') {
+      const card = t.closest('.card');
+      const rowMeta = {};
+      const serviceActive = {};
+      card.querySelectorAll('[data-svc]').forEach((row) => {
+        const id = row.getAttribute('data-svc');
+        rowMeta[id] = {
+          emoji: row.querySelector('[data-svc-field="emoji"]').value.trim(),
+          label: row.querySelector('[data-svc-field="label"]').value.trim(),
+          sub: row.querySelector('[data-svc-field="sub"]').value.trim(),
+        };
+        serviceActive[id] = row.querySelector('[data-svc-field="active"]').checked;
+      });
+      try {
+        await api('/admin/settings/row_meta', { method: 'PUT', body: JSON.stringify({ value: rowMeta }) });
+        await api('/admin/settings/service_active', { method: 'PUT', body: JSON.stringify({ value: serviceActive }) });
+        showToast('Servicios guardados ✅ — ya están activos para todos los clientes.');
+        await loadSettings();
+        render();
       } catch (err) { showToast(err.message); }
       return;
     }

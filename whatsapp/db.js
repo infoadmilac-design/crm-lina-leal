@@ -412,7 +412,10 @@ async function listAllBookings({ status, collaboratorId } = {}) {
 }
 
 /* ---- Configuración editable desde el panel de administrador ---- */
-const SETTINGS_KEY_TO_CAMEL = { commission: 'commission', business_info: 'businessInfo', bot_texts: 'botTexts' };
+const SETTINGS_KEY_TO_CAMEL = {
+  commission: 'commission', business_info: 'businessInfo', bot_texts: 'botTexts',
+  row_meta: 'rowMeta', service_active: 'serviceActive',
+};
 
 async function getSettings() {
   if (!enabled) return {};
