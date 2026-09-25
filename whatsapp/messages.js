@@ -66,7 +66,7 @@ function buttonMessage(to, { header, body, footer, buttons }) {
    vida si el flow_id no está configurado todavía. */
 const FLOW_MESSAGE_VERSION = '3';
 
-function flowMessage(to, { body, flowId, flowCta, screen, data, flowToken }) {
+function flowMessage(to, { body, flowId, flowCta, screen, flowToken }) {
   return {
     ...base(to),
     type: 'interactive',
@@ -81,7 +81,7 @@ function flowMessage(to, { body, flowId, flowCta, screen, data, flowToken }) {
           flow_id: flowId,
           flow_cta: flowCta,
           flow_action: 'navigate',
-          flow_action_payload: { screen, data: data || {} },
+          flow_action_payload: { screen },
         },
       },
     },
@@ -269,13 +269,11 @@ function servicesChecklist(to, session) {
 function servicesPicker(to, session) {
   const flowId = process.env.WHATSAPP_FLOW_ID_SERVICES;
   if (!flowId) return servicesChecklist(to, session);
-  const selected = BUILDER_ROW_IDS.filter((id) => ROW_META[id].active !== false && session.services[id]);
   return flowMessage(to, {
     body: '¿Qué incluye su plan? Marca todos los que quieras a la vez y toca "Continuar".',
     flowId,
     flowCta: 'Elegir servicios',
     screen: 'SERVICES',
-    data: { selected },
   });
 }
 
@@ -401,7 +399,6 @@ function paseoDaysPicker(to, session) {
     flowId,
     flowCta: 'Elegir días',
     screen: 'DAYS',
-    data: { selected: (session.paseoDays || []).map(String) },
   });
 }
 

@@ -4,13 +4,6 @@
     {
       "id": "SERVICES",
       "title": "Arma tu plan",
-      "data": {
-        "selected": {
-          "type": "array",
-          "items": { "type": "string" },
-          "__example__": ["bano", "paseo"]
-        }
-      },
       "terminal": true,
       "success": true,
       "layout": {
@@ -33,7 +26,6 @@
                 "name": "services",
                 "label": "Servicios",
                 "required": false,
-                "init-values": "${data.selected}",
                 "data-source": [
                   { "id": "bano", "title": "🛁 Baño a domicilio" },
                   { "id": "paseo", "title": "🐕 Paseos" },

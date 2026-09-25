@@ -4,13 +4,6 @@
     {
       "id": "DAYS",
       "title": "Días de paseo",
-      "data": {
-        "selected": {
-          "type": "array",
-          "items": { "type": "string" },
-          "__example__": ["0", "2", "4"]
-        }
-      },
       "terminal": true,
       "success": true,
       "layout": {
@@ -34,7 +27,6 @@
                 "label": "Días",
                 "required": true,
                 "min-selected-items": 1,
-                "init-values": "${data.selected}",
                 "data-source": [
                   { "id": "0", "title": "Lunes" },
                   { "id": "1", "title": "Martes" },
