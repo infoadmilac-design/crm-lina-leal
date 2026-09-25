@@ -33,7 +33,7 @@
                 "name": "services",
                 "label": "Servicios",
                 "required": false,
-                "init-value": "${data.selected}",
+                "init-values": "${data.selected}",
                 "data-source": [
                   { "id": "bano", "title": "🛁 Baño a domicilio" },
                   { "id": "paseo", "title": "🐕 Paseos" },

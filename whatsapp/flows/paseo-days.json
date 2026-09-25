@@ -34,7 +34,7 @@
                 "label": "Días",
                 "required": true,
                 "min-selected-items": 1,
-                "init-value": "${data.selected}",
+                "init-values": "${data.selected}",
                 "data-source": [
                   { "id": "0", "title": "Lunes" },
                   { "id": "1", "title": "Martes" },
